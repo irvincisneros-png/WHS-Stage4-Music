@@ -1,4 +1,4 @@
-/* Clef Trainer — Staff Wars-style note recognition for treble and bass clefs.
+/* Clef Trainer: Staff Wars-style note recognition for treble and bass clefs.
    Difficulty controls range and speed bonus. */
 
 function StaffSVG({ clef, noteIndex, ledgerStep }) {
@@ -53,7 +53,7 @@ function StaffSVG({ clef, noteIndex, ledgerStep }) {
    Treble: lines from top E5 D5 B4 G4 F4 + spaces F5 C5 A4 E4 etc.
    We'll define the staff positions explicitly. */
 const TREBLE_NOTES = [
-  // index -2 (above top with one ledger) is A5? — we keep within +-2 ledger range
+  // index -2 (above top with one ledger) is A5? We keep within +-2 ledger range
   { name: "A5", idx: -1, midi: 69 + 12 },
   { name: "G5", idx: 0,  midi: 67 + 12 }, // hmm wait
 ];
@@ -96,6 +96,7 @@ function ClefTrainer({ topic, difficulty = "medium", onComplete }) {
   const [target, setTarget] = React.useState(() => randomNote(startingClef === "treble" ? TREBLE : BASS, difficulty));
   const [score, setScore] = React.useState(0);
   const [streak, setStreak] = React.useState(0);
+  const [bestStreak, setBestStreak] = React.useState(0);
   const [feedback, setFeedback] = React.useState(null);
   const [running, setRunning] = React.useState(false);
   const [timeLeft, setTimeLeft] = React.useState(60);
@@ -141,7 +142,11 @@ function ClefTrainer({ topic, difficulty = "medium", onComplete }) {
       window.MusicAudio?.playPiano(target.name, 0.6);
       window.MusicAudio?.ding(true);
       setScore(s => s + 10 + streak);
-      setStreak(s => s + 1);
+      setStreak(s => {
+        const newStreak = s + 1;
+        setBestStreak(b => Math.max(b, newStreak));
+        return newStreak;
+      });
     } else {
       window.MusicAudio?.ding(false);
       setStreak(0);
@@ -154,7 +159,7 @@ function ClefTrainer({ topic, difficulty = "medium", onComplete }) {
   }
 
   function start() {
-    setScore(0); setStreak(0); setRound(0);
+    setScore(0); setStreak(0); setBestStreak(0); setRound(0);
     setTimeLeft(difficulty === "easy" ? 90 : difficulty === "medium" ? 60 : 45);
     setRunning(true);
     setTarget(randomNote(pool, difficulty));
@@ -214,7 +219,7 @@ function ClefTrainer({ topic, difficulty = "medium", onComplete }) {
             <div className="center-text">
               <div className="eyebrow">Session complete</div>
               <h3 style={{ fontSize: "1.8rem" }}>You scored {score}</h3>
-              <div className="text-soft">Best streak ×{streak}</div>
+              <div className="text-soft">Best streak ×{bestStreak}</div>
             </div>
           )}
           <button className="btn btn-primary" onClick={start}>

@@ -1,4 +1,4 @@
-/* Rhythm Game — clap-back style.
+/* Rhythm Game: clap-back style.
    Shows a 4-beat (or 8-beat) rhythm using note values, plays it, then user taps
    along to a metronome to match the pattern. */
 
@@ -10,7 +10,7 @@ const NOTE_GLYPH = {
   r:  { label: "𝄽", beats: 1, text: "Crotchet rest", rest: true },
 };
 
-// Pattern banks per difficulty. Each pattern is an array of "beats" — each beat
+// Pattern banks per difficulty. Each pattern is an array of "beats"; each beat
 // is either "q", "h"/"r" (1 beat), or a pair of quavers represented as a tuple.
 const PATTERNS = {
   easy: [

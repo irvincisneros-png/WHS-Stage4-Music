@@ -1,4 +1,4 @@
-/* TestRunner — pre-test and post-test driver.
+/* TestRunner: pre-test and post-test driver.
    Samples one question per topic, runs them, then shows a results page
    with per-topic accuracy and personalised focus recommendations. */
 
@@ -47,7 +47,7 @@ function TestRunner({ year, kind, onBack, onOpenTopic }) {
           </h1>
           <p style={{ fontSize: "1.1rem", lineHeight: 1.55, maxWidth: 720, marginTop: 14 }}>
             {kind === "pre"
-              ? "A quick check of your music knowledge, one question per module across the whole year. Don't stress if you don't know the answers yet. The results will point you to the modules worth starting with."
+              ? "A quick check of your music knowledge across every topic this year. Don't stress if you don't know the answers yet. The results will point you to the topics worth starting with."
               : "Now that you've worked through the modules, take this end-of-year check. You'll see it side-by-side with your Pre-Test so you can see how far you've come."}
           </p>
           <div className="row gap-3 wrap mt-6">
@@ -102,7 +102,7 @@ function TestRunner({ year, kind, onBack, onOpenTopic }) {
     );
   }
 
-  // phase === "done" — results
+  // phase === "done": results
   const pct = Math.round((results.correct / results.total) * 100);
 
   // Per-topic rows in the order of the curriculum
@@ -302,7 +302,7 @@ function TestRunner({ year, kind, onBack, onOpenTopic }) {
   );
 }
 
-/* Score dial — radial progress */
+/* Score dial: radial progress */
 function ScoreDial({ value, size = 160, label }) {
   const stroke = 14;
   const r = (size - stroke) / 2;

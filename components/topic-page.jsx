@@ -1,4 +1,4 @@
-/* Topic Page — full-page detail view for a single module.
+/* Topic Page: full-page detail view for a single module.
    Replaces the previous modal. Hash-routed via app.jsx. */
 
 /* Maps outcome keys to NSW syllabus codes + labels */
@@ -38,10 +38,15 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
     <article className="col gap-6">
       {/* Breadcrumb bar */}
       <div className="row between center wrap gap-3">
-        <button className="btn btn-ghost" onClick={onBack}>
-          <span className="link-bob" style={{ display: "inline-block" }}>←</span>
-          &nbsp;Back to {yearData.label}
-        </button>
+        <div className="row gap-2 center wrap">
+          <button className="btn btn-ghost" onClick={onBack}>
+            <span className="link-bob" style={{ display: "inline-block" }}>←</span>
+            &nbsp;Back to {yearData.label}
+          </button>
+          <button className="btn btn-ghost no-print" onClick={() => window.print()} aria-label="Print this topic" title="Print this topic">
+            ⎙&nbsp;Print
+          </button>
+        </div>
         <div className="row gap-2 wrap">
           <Chip>{yearData.label}</Chip>
           <Chip>{topic.eyebrow}</Chip>
@@ -105,7 +110,7 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
 
       {/* Body */}
       <div className="row gap-6 wrap" style={{ alignItems: "flex-start" }}>
-        {/* Main column — deep reading */}
+        {/* Main column: deep reading */}
         <div className="col gap-6" style={{ flex: "2 1 520px", minWidth: 300 }}>
           {topic.deep && topic.deep.length > 0 && (
             <section>

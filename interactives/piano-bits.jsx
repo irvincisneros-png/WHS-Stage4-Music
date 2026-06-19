@@ -1,15 +1,15 @@
 /* Piano-specific mini-interactives for Year 8 (Keys & two staves).
    Builds on Year 7 keyboard work by adding both-hands depth:
-     · TwoHandKeys     — 2-octave keyboard with LH & RH home zones marked, plus a hands-together C major scale
-     · GrandStaffNotes — clickable grand staff (treble + bass joined by middle C)
-     · TwoHandScale    — parallel-octave C major run, hands together with adjustable speed
+     · TwoHandKeys: 2-octave keyboard with LH & RH home zones marked, plus a hands-together C major scale
+     · GrandStaffNotes: clickable grand staff (treble + bass joined by middle C)
+     · TwoHandScale: parallel-octave C major run, hands together with adjustable speed
 */
 
 const { useEffect: usePEf, useRef: usePRf, useState: usePSt } = React;
 const PA = () => window.MusicAudio;
 
 /* ------------------------------------------------------------------ */
-/* TwoHandKeys — keyboard with both hand home zones                   */
+/* TwoHandKeys: keyboard with both hand home zones                    */
 /* ------------------------------------------------------------------ */
 function TwoHandKeys({ startMidi = 48, octaves = 2, bpm = 90 }) {
   // Default: C3 to C5 = 2 octaves
@@ -119,7 +119,7 @@ function TwoHandKeys({ startMidi = 48, octaves = 2, bpm = 90 }) {
         </span>
         <span className="row gap-2 center">
           <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--ink)" }} />
-          <span className="mono">Middle C — the bridge</span>
+          <span className="mono">Middle C: the bridge</span>
         </span>
       </div>
 
@@ -159,8 +159,23 @@ function TwoHandKeys({ startMidi = 48, octaves = 2, bpm = 90 }) {
                       ? "color-mix(in oklab, var(--terracotta) 22%, white)"
                       : "#fff";
 
+            const keyLabel = nameForMidi(m);
+            const zoneDesc = isMiddleC ? "Middle C" : inLh ? "left hand zone" : inRh ? "right hand zone" : "";
+            const fullLabel = zoneDesc ? `Play ${keyLabel} - ${zoneDesc}` : `Play ${keyLabel}`;
+
             return (
-              <g key={"w" + m} onClick={() => press(m)} style={{ cursor: "pointer" }}>
+              <g key={"w" + m}
+                onClick={() => press(m)}
+                style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={fullLabel}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    press(m);
+                  }
+                }}>
                 <rect
                   x={i * kw}
                   y={0}
@@ -220,8 +235,20 @@ function TwoHandKeys({ startMidi = 48, octaves = 2, bpm = 90 }) {
           })}
           {blackKeys.map((m) => {
             const x = blackXFor(m);
+            const blackKeyLabel = nameForMidi(m);
             return (
-              <g key={"b" + m} onClick={() => press(m)} style={{ cursor: "pointer" }}>
+              <g key={"b" + m}
+                onClick={() => press(m)}
+                style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Play ${blackKeyLabel}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    press(m);
+                  }
+                }}>
                 <rect
                   x={x}
                   y={0}
@@ -237,14 +264,14 @@ function TwoHandKeys({ startMidi = 48, octaves = 2, bpm = 90 }) {
       </div>
 
       <p className="text-soft" style={{ fontSize: ".82rem", margin: 0 }}>
-        Tap any key to hear it. The teal band marks the left-hand home (C3 – G3), terracotta marks the right-hand home (C4 – G4). They meet at Middle C — the same physical key both hands count from.
+        Tap any key to hear it. The teal band marks the left-hand home (C3 – G3), terracotta marks the right-hand home (C4 – G4). They meet at Middle C, the same physical key both hands count from.
       </p>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* GrandStaffNotes — clickable grand staff                             */
+/* GrandStaffNotes: clickable grand staff                              */
 /* ------------------------------------------------------------------ */
 function GrandStaffNotes() {
   // Treble notes E4..F5 (lines+spaces) and bass notes G2..A3, plus middle C bridging.
@@ -376,6 +403,15 @@ function GrandStaffNotes() {
                 key={n.name}
                 onClick={() => tap(n.name, n.role)}
                 style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={n.role ? `${n.name} - ${n.role}` : `Play ${n.name}, treble staff`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    tap(n.name, n.role);
+                  }
+                }}
               >
                 <ellipse
                   cx={x}
@@ -410,6 +446,15 @@ function GrandStaffNotes() {
                 key={n.name}
                 onClick={() => tap(n.name, n.role)}
                 style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={n.role ? `${n.name} - ${n.role}` : `Play ${n.name}, bass staff`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    tap(n.name, n.role);
+                  }
+                }}
               >
                 <ellipse
                   cx={x}
@@ -438,6 +483,15 @@ function GrandStaffNotes() {
           <g
             onClick={() => tap("C4", "Middle C · bridges both staves")}
             style={{ cursor: "pointer" }}
+            tabIndex={0}
+            role="button"
+            aria-label="Play C4 - Middle C, bridges both staves"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                if (e.key === " ") e.preventDefault();
+                tap("C4", "Middle C · bridges both staves");
+              }
+            }}
           >
             <line
               x1={W * 0.62 - 12}
@@ -471,14 +525,14 @@ function GrandStaffNotes() {
       </div>
 
       <p className="text-soft" style={{ fontSize: ".82rem", margin: 0 }}>
-        Treble (G clef) is for the right hand. Bass (F clef) is for the left. Middle C floats on a ledger line <em>between</em> them — the same key on the piano, written either way depending on which hand plays it.
+        Treble (G clef) is for the right hand. Bass (F clef) is for the left. Middle C floats on a ledger line <em>between</em> them, the same key on the piano, written either way depending on which hand plays it.
       </p>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* TwoHandScale — ascend + descend together, with tempo slider         */
+/* TwoHandScale: ascend + descend together, with tempo slider          */
 /* ------------------------------------------------------------------ */
 function TwoHandScale() {
   const RH = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
@@ -518,7 +572,7 @@ function TwoHandScale() {
       <div className="row between center wrap gap-2">
         <div>
           <div className="eyebrow">Hands together · C major scale</div>
-          <strong>One octave up, one octave down — parallel</strong>
+          <strong>One octave up, one octave down, in parallel</strong>
         </div>
         <button
           className="btn btn-primary"

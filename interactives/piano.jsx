@@ -1,7 +1,7 @@
-/* Piano Player — two-octave keyboard with play-along sheet music.
+/* Piano Player: two-octave keyboard with play-along sheet music.
    Ships public-domain melodies plus two ORIGINAL pedagogical exercises
    ("Simple Melody" and "Extension Melody") designed to drill the same skills
-   as the Year 7 Flintstones repertoire — 5-finger RH treble reading for
+   as the Year 7 Flintstones repertoire: 5-finger RH treble reading for
    Simple; LH bass, Am7-Dm7-G7-C turnaround and syncopation for Extension.
    Teachers can also paste a custom note sequence to mirror their printed
    class music.
@@ -37,7 +37,7 @@ function annotateBeats(seq) {
   });
 }
 
-/* ---------- Grand staff — treble + bass, beat-positioned ---------- */
+/* ---------- Grand staff: treble + bass, beat-positioned ---------- */
 function GrandStave({ rh, lh, chords, totalBeats, rhPos, lhPos }) {
   const BEAT_PX = 38;
   const PAD_L = 70;
@@ -146,7 +146,7 @@ function GrandStave({ rh, lh, chords, totalBeats, rhPos, lhPos }) {
         {ev.dur === 1.5 || ev.dur === 3 ? (
           <circle cx={x + 10} cy={y} r="1.6" fill={color} />
         ) : null}
-        {/* Note letter under treble notes only — bass labels would clutter */}
+        {/* Note letter under treble notes only (bass labels would clutter) */}
         {hand === "rh" && (
           <text x={x} y={160}
                 fontSize="9.5"
@@ -233,8 +233,8 @@ const BLACK_KEY_INFO = [
 ];
 
 /* ---------- Repertoire ----------
-   Hot Cross Buns, Twinkle, Ode, Mary — Public-domain warm-ups.
-   simpleStone & extensionStone — ORIGINAL exercises composed to mirror the
+   Hot Cross Buns, Twinkle, Ode, Mary: public-domain warm-ups.
+   simpleStone & extensionStone: ORIGINAL exercises composed to mirror the
    pedagogical aims of the Year 7 Flintstones Simple / Extension sheets.
    Teachers play the printed sheets in class; these exercises drill the same
    skills (5-finger RH; LH bass + chord turnaround) on-screen. */
@@ -266,13 +266,13 @@ const SONGS = {
     rh: [
       // Bar 1 (C)
       ["E5",1],["G5",1],["C6",2],
-      // Bar 2 (Am7) — dotted syncopation
+      // Bar 2 (Am7): dotted syncopation
       ["A5",1.5],["G5",0.5],["E5",2],
       // Bar 3 (Dm7)
       ["F5",1],["A5",1],["D6",1],["A5",1],
       // Bar 4 (G7)
       ["G5",1],["F5",1],["E5",2],
-      // Bar 5 (C) — quaver pickup
+      // Bar 5 (C): quaver pickup
       ["E5",0.5],["G5",0.5],["C6",1],["G5",1],["E5",1],
       // Bar 6 (Am7)
       ["A5",0.5],["E5",0.5],["A5",1],["C6",2],
@@ -288,7 +288,7 @@ const SONGS = {
       ["A2",1],["E3",1],["A2",1],["E3",1],
       // Bar 3 (Dm7)
       ["D3",1],["A3",1],["D3",1],["A3",1],
-      // Bar 4 (G7) — adding the b7 (F)
+      // Bar 4 (G7): adding the b7 (F)
       ["G2",1],["D3",1],["G2",1],["F3",1],
       // Bar 5 (C)
       ["C3",1],["G3",1],["C3",1],["G3",1],
@@ -345,13 +345,13 @@ const SONGS = {
       ["F4",1],["F4",1],["E4",1],["E4",1],["D4",1],["D4",1],["C4",2],
     ],
     lh: [
-      // Bar 1 — C: alternate root and fifth on the half
+      // Bar 1 (C): alternate root and fifth on the half
       ["C3",2],["G3",2],
-      // Bar 2 — F → C: half-bar chord change
+      // Bar 2 (F → C): half-bar chord change
       ["F2",2],["C3",2],
-      // Bar 3 — C → G: still in tonic, hint of dominant
+      // Bar 3 (C → G): still in tonic, hint of dominant
       ["C3",2],["G3",2],
-      // Bar 4 — G → C: V → I cadence to home
+      // Bar 4 (G → C): V to I cadence to home
       ["G2",2],["C3",2],
     ],
   },
@@ -389,13 +389,13 @@ const SONGS = {
       ["E4",1],["G4",1],["G4",2],
     ],
     lh: [
-      // Bar 1 — C: hold the root for the whole bar
+      // Bar 1 (C): hold the root for the whole bar
       ["C3",4],
-      // Bar 2 — C: hold root (RH sits on E)
+      // Bar 2 (C): hold root (RH sits on E)
       ["C3",4],
-      // Bar 3 — G: V chord (RH sits on D)
+      // Bar 3 (G): V chord (RH sits on D)
       ["G2",4],
-      // Bar 4 — C: home
+      // Bar 4 (C): home
       ["C3",4],
     ],
   },
@@ -678,12 +678,26 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
             {WHITE_KEYS.map(n => (
               <div
                 key={n}
+                role="button"
+                tabIndex={0}
+                aria-label={n}
                 className={"key-white" + (whiteIsActive(n) ? " active" : "") + (n === nextNote ? " hint" : "")}
                 onMouseDown={() => pressKey(n)}
                 onMouseUp={() => releaseKey(n)}
                 onMouseLeave={() => releaseKey(n)}
                 onTouchStart={(e) => { e.preventDefault(); pressKey(n); }}
                 onTouchEnd={() => releaseKey(n)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    pressKey(n);
+                  }
+                }}
+                onKeyUp={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    releaseKey(n);
+                  }
+                }}
                 style={{
                   width: KW, height: KH, cursor: "pointer",
                   outline: n === nextNote ? "3px solid var(--terracotta)" : "none",
@@ -707,12 +721,26 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
             return (
               <div
                 key={n}
+                role="button"
+                tabIndex={0}
+                aria-label={n}
                 className={"key-black" + (blackIsActive(n) ? " active" : "")}
                 onMouseDown={() => pressKey(n)}
                 onMouseUp={() => releaseKey(n)}
                 onMouseLeave={() => releaseKey(n)}
                 onTouchStart={(e) => { e.preventDefault(); pressKey(n); }}
                 onTouchEnd={() => releaseKey(n)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    pressKey(n);
+                  }
+                }}
+                onKeyUp={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    releaseKey(n);
+                  }
+                }}
                 style={{
                   left, top: 0,
                   width: KW * 0.64, height: KH * 0.62,

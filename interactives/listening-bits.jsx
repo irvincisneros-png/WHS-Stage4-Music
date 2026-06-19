@@ -9,7 +9,7 @@ const { useEffect: useLEf, useRef: useLRf, useState: useLSt } = React;
 const LA = () => window.MusicAudio;
 
 /* ================================================================== */
-/* RhythmDictation — listen → reconstruct                              */
+/* RhythmDictation: listen → reconstruct                              */
 /* Uses Woonona High mnemonics: Tea / Coff-ee / Straw-ber-ry /         */
 /* Ber-ry-straw / Shh (rest). Beat subdivided into 4 sixteenths.       */
 /* ================================================================== */
@@ -101,7 +101,7 @@ function RhythmDictation({ bpm = 76 }) {
     }
     timersRef.current.push(setTimeout(() => setPhase("play"), 4 * beatMs - 30));
 
-    // play rhythm — each beat is 4 sixteenths
+    // play rhythm: each beat is 4 sixteenths
     target.cells.forEach((c, ci) => {
       PATTERNS[c].pulses.forEach((p, pi) => {
         if (p === 1) {
@@ -168,7 +168,7 @@ function RhythmDictation({ bpm = 76 }) {
     }
     const p = PATTERNS[pattern].pulses; // length 4
     const xs = [W * 0.18, W * 0.40, W * 0.62, W * 0.84];
-    // build groups of consecutive 1s — those get beamed
+    // build groups of consecutive 1s; those get beamed
     const groups = [];
     let cur = null;
     p.forEach((v, i) => {
@@ -190,7 +190,7 @@ function RhythmDictation({ bpm = 76 }) {
         {p.map((v, i) => {
           if (!v) return null;
           const x = xs[i];
-          // crotchet (TEA) has no beam — solo stem with no flag
+          // crotchet (TEA) has no beam: solo stem with no flag
           // others are in a beam group
           return (
             <g key={i}>
@@ -206,7 +206,7 @@ function RhythmDictation({ bpm = 76 }) {
         {/* beams: per group, draw a thick beam line across the stems */}
         {groups.map((g, gi) => {
           if (g.start === g.end && pattern === "TEA") {
-            // crotchet — no beam (handled below as a no-op)
+            // crotchet: no beam (handled below as a no-op)
             return null;
           }
           if (pattern === "TEA") return null;
@@ -217,7 +217,7 @@ function RhythmDictation({ bpm = 76 }) {
           // for STRAWBERRY (1 quaver + 2 semis), the first note is a quaver (single beam over only itself? actually beamed together, the first connects to the 2nd with single beam, then 2nd-3rd get double beam)
           // Simplify: draw main beam across whole group; add secondary beams only between adjacent semiquaver pulses (where there are two consecutive 1s separated by no rest gap AND not the lone quaver).
           // For all our patterns:
-          //   COFFEE     pulses [1,0,1,0]  -> no group (only one pulse per group? actually [1,0,1,0]: groups = [{0,0},{2,2}]). Two separate quavers — each beamed alone? In standard notation, COFFEE = two quavers beamed together. So special-case it.
+          //   COFFEE     pulses [1,0,1,0]  -> no group (only one pulse per group? actually [1,0,1,0]: groups = [{0,0},{2,2}]). Two separate quavers, each beamed alone? In standard notation, COFFEE = two quavers beamed together. So special-case it.
           //   STRAWBERRY [1,0,1,1] -> groups [{0,0},{2,3}]. Lone quaver, then beamed pair of semis.
           //   BERRYSTRAW [1,1,1,0] -> group {0,2}. Three notes; semi-semi-quaver pattern.
           // We'll draw beams manually per-pattern below; skip default group beams.
@@ -381,7 +381,7 @@ function RhythmDictation({ bpm = 76 }) {
                     </span>
                   </>
                 ) : (
-                  <span className="text-soft" style={{ fontSize: "1.2rem" }}>—</span>
+                  <span className="text-soft" style={{ fontSize: "1.2rem" }}>·</span>
                 )}
               </div>
               <div style={{ display: "grid", gap: 4 }}>
@@ -424,7 +424,7 @@ function RhythmDictation({ bpm = 76 }) {
         <span className="mono text-soft" style={{ fontSize: ".82rem" }}>
           {!revealed
             ? filled ? "all four beats filled" : "fill all four beats"
-            : correct ? "Locked in. Try a harder one." : `${score}/4 — replay and listen again`}
+            : correct ? "Locked in. Try a harder one." : `${score}/4. Replay and listen again.`}
         </span>
         <button
           className="btn btn-primary"
@@ -440,7 +440,7 @@ function RhythmDictation({ bpm = 76 }) {
 }
 
 /* ================================================================== */
-/* HighSameLow — reference note, then 3 comparison notes               */
+/* HighSameLow: reference note, then 3 comparison notes               */
 /* Each judgement is vs the IMMEDIATELY PREVIOUS note in the chain.    */
 /* ================================================================== */
 function HighSameLow() {
@@ -589,7 +589,7 @@ function HighSameLow() {
         </button>
       ) : (
         <>
-          {/* The chain — visual of where you are */}
+          {/* The chain: visual of where you are */}
           <div
             style={{
               display: "grid",
@@ -605,7 +605,7 @@ function HighSameLow() {
                 borderRadius: 10,
                 border: "1.5px solid var(--ink)",
                 background: "var(--ink)",
-                color: "var(--paper)",
+                color: "var(--cream-2)",
                 display: "grid",
                 gap: 4,
                 justifyItems: "center",
@@ -685,7 +685,7 @@ function HighSameLow() {
                   >
                     {done
                       ? `${got === "higher" ? "▲" : got === "lower" ? "▼" : "═"}${right ? "" : ` · was ${truth}`}`
-                      : isCurrent ? "judge this" : "—"}
+                      : isCurrent ? "judge this" : "·"}
                   </span>
                 </div>
               );
@@ -713,7 +713,7 @@ function HighSameLow() {
                   timersRef.current.push(setTimeout(() => LA()?.playPiano(round.notes[stage + 1], 0.7, 0.7), 750));
                   timersRef.current.push(setTimeout(() => setPlaying(false), 1600));
                 } else {
-                  // round done — replay whole chain
+                  // round done: replay whole chain
                   playUpTo(round, 3);
                 }
               }}
@@ -796,7 +796,7 @@ function HighSameLow() {
 }
 
 /* ================================================================== */
-/* ListenAndLabel — describe a phrase by its elements                  */
+/* ListenAndLabel: describe a phrase by its elements                  */
 /* ================================================================== */
 function ListenAndLabel() {
   const PIECES = [
@@ -818,7 +818,7 @@ function ListenAndLabel() {
     },
     {
       name: "Phrase B",
-      hint: "Short, detached melody notes sitting over chord stabs — that's homophonic, played staccato, in a minor key.",
+      hint: "Short, detached melody notes sitting over chord stabs. That's homophonic, played staccato, in a minor key.",
       truth: {
         texture: "Homophonic",
         articulation: "Staccato",
@@ -836,7 +836,7 @@ function ListenAndLabel() {
     },
     {
       name: "Phrase C",
-      hint: "Two independent melodies running at once — that's polyphonic, both equal, big major feel.",
+      hint: "Two independent melodies running at once. That's polyphonic, both equal, big major feel.",
       truth: {
         texture: "Polyphonic",
         articulation: "Legato",
@@ -854,7 +854,7 @@ function ListenAndLabel() {
     },
     {
       name: "Phrase D",
-      hint: "A single slow line, gentle in volume — monophonic, legato, soft (pp), and the third is darker — minor.",
+      hint: "A single slow line, gentle in volume: monophonic, legato, soft (pp), and the tonality is darker. Minor.",
       truth: {
         texture: "Monophonic",
         articulation: "Legato",
@@ -920,7 +920,7 @@ function ListenAndLabel() {
       </div>
 
       <p className="text-soft" style={{ fontSize: ".88rem", margin: 0 }}>
-        Listen to the phrase (replay as many times as you like), then pick the technical term that best describes each element. Use the words — not "cool" or "sad" — these are what examiners mark.
+        Listen to the phrase (replay as many times as you like), then pick the technical term that best describes each element. Use the words, not "cool" or "sad": these are what examiners mark.
       </p>
 
       <div style={{ display: "grid", gap: 12 }}>
@@ -991,7 +991,7 @@ function ListenAndLabel() {
         <span className="mono text-soft" style={{ fontSize: ".82rem" }}>
           {!revealed
             ? filled ? "all five answered" : "answer all five elements"
-            : <>scored <strong style={{ color: "var(--teal)" }}>{score}/{QUESTIONS.length}</strong> — {piece.hint}</>}
+            : <>scored <strong style={{ color: "var(--teal)" }}>{score}/{QUESTIONS.length}</strong>. {piece.hint}</>}
         </span>
         <button
           className="btn btn-primary"
@@ -1007,7 +1007,7 @@ function ListenAndLabel() {
 }
 
 /* ================================================================== */
-/* VocabMatcher — pair term with definition                            */
+/* VocabMatcher: pair term with definition                            */
 /* ================================================================== */
 function VocabMatcher() {
   const PAIRS = [
@@ -1070,7 +1070,7 @@ function VocabMatcher() {
       </div>
 
       <p className="text-soft" style={{ fontSize: ".88rem", margin: 0 }}>
-        Click a term, then click its definition. Pairs lock in colour — green for right, red for wrong.
+        Click a term, then click its definition. Pairs lock in colour: green for right, red for wrong.
       </p>
 
       <div
@@ -1187,18 +1187,18 @@ function VocabMatcher() {
 }
 
 /* ================================================================== */
-/* ContextMatcher — pair context with its function (section 3)         */
+/* ContextMatcher: pair context with its function (section 3)         */
 /* ================================================================== */
 function ContextMatcher() {
   const ITEMS = [
     {
       ctx: "Songline",
-      fn: "Carries story, knowledge and Country across generations — performance tied to specific places and people.",
+      fn: "Carries story, knowledge and Country across generations. Performance is tied to specific places and people.",
       colour: "var(--teal)",
     },
     {
       ctx: "Mass / Hymn",
-      fn: "Written for a religious liturgy — text, ritual and a reverberant building shape the sound.",
+      fn: "Written for a religious liturgy: text, ritual and a reverberant building shape the sound.",
       colour: "var(--terracotta)",
     },
     {
@@ -1208,12 +1208,12 @@ function ContextMatcher() {
     },
     {
       ctx: "National anthem",
-      fn: "Performed at official ceremonies — strong, simple, easy to sing in unison.",
+      fn: "Performed at official ceremonies: strong, simple, easy to sing in unison.",
       colour: "var(--espresso)",
     },
     {
       ctx: "Drill / Hip-hop",
-      fn: "Documents life on the street — sub-heavy beats, syncopated flow, regional dialect.",
+      fn: "Documents life on the street: sub-heavy beats, syncopated flow, regional dialect.",
       colour: "#7c4a7e",
     },
   ];
@@ -1270,7 +1270,7 @@ function ContextMatcher() {
       </div>
 
       <p className="text-soft" style={{ fontSize: ".88rem", margin: 0 }}>
-        Context shapes the elements — a hymn isn't engineered like a K-pop single. Click a context, then the function that fits.
+        Context shapes the elements: a hymn isn't engineered like a K-pop single. Click a context, then the function that fits.
       </p>
 
       <div

@@ -1,4 +1,4 @@
-/* Elements of Music Explorer — six interactive cards, each demos its element
+/* Elements of Music Explorer: six interactive cards, each demos its element
    with both AUDIO and a synced VISUAL animation. */
 
 const ELEMENTS = [
@@ -26,7 +26,7 @@ const ELEMENTS = [
   {
     id: "tone",
     label: "Performing media & timbre",
-    blurb: "What makes the sound — voice, instrument or technology — and its 'flavour' (tone colour). Same pitch, different instrument.",
+    blurb: "What makes the sound (voice, instrument or technology) and its 'flavour' (tone colour). Same pitch, different instrument.",
     color: "#b07b8f",
     demo: ["Piano", "Pluck", "Synth"],
   },
@@ -339,7 +339,7 @@ function ElementsExplorer({ topic, difficulty, onComplete }) {
       }}>
         {ELEMENTS.map(el => (
           /* Plain (non-tilting) card: this card holds its own clickable demo
-             buttons, so it must NOT use TiltCard — a cursor-following 3D tilt
+             buttons, so it must NOT use TiltCard. A cursor-following 3D tilt
              makes the buttons wobble away from the pointer and hard to click. */
           <div key={el.id} className="chunk" style={{
             padding: 18,

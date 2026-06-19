@@ -1,9 +1,9 @@
-/* Woonona Music — design system
+/* Woonona Music: design system
    Warm earth palette, chunky-but-refined cards, springy 3D hovers.
    "Nintendo physicality + Apple discipline" */
 
 :root {
-  /* base palette — clean cream-white with cool accents
+  /* base palette: clean cream-white with cool accents
      (Apple paper + Nintendo chunky shadows, refined edition) */
   --cream:      #fbfaf5;   /* page background, warmer-than-white */
   --cream-2:    #ffffff;   /* card / surface */
@@ -28,7 +28,7 @@
   --radius-sm:  16px;
   --radius-pill: 999px;
 
-  /* chunky "physical" shadow — looks like a key cap or a Joycon button */
+  /* chunky "physical" shadow, looks like a key cap or a Joycon button */
   --chunk: 0 6px 0 0;
   --chunk-lg: 0 10px 0 0;
 
@@ -539,3 +539,30 @@ p { margin: 0; text-wrap: pretty; }
 }
 /* keep the chunky pieces readable when focused */
 .btn:focus-visible, .year-tab:focus-visible, .tile:focus-visible, .chunk:focus-visible { outline-offset: 3px; }
+
+/* ---------- print: clean, ink-saving printout (capability parity with the
+   Junior Science sites, which each offer a Print button) ---------- */
+@media print {
+  :root {
+    --bg: #fff; --bg-2: #fff;
+    --ink: #111; --ink-soft: #444; --border: #c9c9c9;
+  }
+  body { background: #fff; color: #111; }
+  /* hide interactive chrome: header controls, year tabs, HUD, footer, and
+     anything explicitly marked no-print (e.g. the Print button itself) */
+  .no-print, .year-tab, .footer, .hud-pill { display: none !important; }
+  /* flatten the playful 3D so it prints flat and legible */
+  .chunk, .tile, .modal-card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  .tilt-inner, .tilt-layer-1, .tilt-layer-2, .tilt-layer-3,
+  .tilt:hover .tilt-layer-1, .tilt:hover .tilt-layer-2, .tilt:hover .tilt-layer-3 {
+    transform: none !important;
+  }
+  .tilt::after { opacity: 0 !important; }
+  .app { max-width: none; padding: 0; }
+  a { color: #111 !important; text-decoration: underline; }
+  /* avoid awkward page splits inside a card or figure */
+  section, figure, .chunk, .tile { break-inside: avoid; }
+}

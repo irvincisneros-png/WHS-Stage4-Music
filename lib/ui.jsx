@@ -56,24 +56,74 @@ function TiltCard({ children, intensity = 14, className = "", style, onClick, lo
 
 /* ---------- Modal ---------- */
 function Modal({ open, onClose, children, maxWidth }) {
+  const panelRef = useRef(null);
+  const returnFocusRef = useRef(null);
+
   useEffect(() => {
     if (!open) return;
+
+    // Remember what had focus before the modal opened so we can restore it.
+    returnFocusRef.current = document.activeElement;
+
+    // Move focus into the panel (or first focusable child) once it renders.
+    const panel = panelRef.current;
+    if (panel) {
+      const focusable = panel.querySelectorAll(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        panel.focus();
+      }
+    }
+
+    // Escape to close.
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
+
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      // Return focus to the trigger element when the modal closes.
+      if (returnFocusRef.current && typeof returnFocusRef.current.focus === "function") {
+        returnFocusRef.current.focus();
+      }
     };
   }, [open, onClose]);
+
+  // Tab trap: keep focus cycling within the modal panel.
+  const onTabKey = (e) => {
+    if (e.key !== "Tab") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = Array.from(panel.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    ));
+    if (focusable.length === 0) { e.preventDefault(); return; }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
 
   if (!open) return null;
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
+        ref={panelRef}
         className="modal-card"
         style={{ maxWidth: maxWidth || undefined }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dialog"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onTabKey}
       >
         {children}
       </div>

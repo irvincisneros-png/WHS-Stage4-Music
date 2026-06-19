@@ -1,4 +1,4 @@
-/* ProgressDashboard — year-level overview of completion, module-quiz scores,
+/* ProgressDashboard: year-level overview of completion, module-quiz scores,
    and pre/post test results. Acts as the "where to focus" hub. */
 
 function ProgressDashboard({ year, onBack, onOpenTopic, onTakeTest }) {
@@ -95,7 +95,7 @@ function ProgressDashboard({ year, onBack, onOpenTopic, onTakeTest }) {
         </div>
       </header>
 
-      {/* Focus list — biggest impact area */}
+      {/* Focus list: biggest impact area */}
       {focus.length > 0 && (
         <section className="chunk paper" style={{ padding: "26px 28px" }}>
           <div className="eyebrow mb-2">Recommended focus</div>

@@ -484,9 +484,9 @@ const CURRICULUM = {
         pianoSong: "chasingcars",
         deep: [
           { h: "Both hands have a home",
-            p: "Right-hand thumb sits on Middle C with the next four fingers covering D E F G. Left-hand thumb sits on the C an octave below (C3) with its fingers spreading DOWN through G3 to C3. The two hands meet at Middle C — the same key on the piano, written on either staff depending on which hand plays it." },
+            p: "Right-hand thumb sits on Middle C with the next four fingers covering D E F G. Left-hand thumb sits on the C an octave below (C3) with its fingers spreading DOWN through G3 to C3. The two hands meet at Middle C, the same key on the piano, written on either staff depending on which hand plays it." },
           { h: "Reading the bass clef",
-            p: "Treble clef wraps the G line; bass clef bookends the F line — the two dots of the symbol sit either side of F3 (the second line from the top of the bass staff). Lines bottom-up: G B D F A. Spaces bottom-up: A C E G. Mnemonics help while you're learning; drop them once you can read directly." },
+            p: "Treble clef wraps the G line; bass clef bookends the F line: the two dots of the symbol sit either side of F3 (the second line from the top of the bass staff). Lines bottom-up: G B D F A. Spaces bottom-up: A C E G. Mnemonics help while you're learning; drop them once you can read directly." },
           { h: "Hands separate, then together",
             p: "When learning any piano piece, play each hand on its own until it's automatic. Then put them together at half speed. Only push the tempo when both hands are clean. This is slow but it's the fastest way." },
           { h: "Looking ahead",

@@ -1,4 +1,4 @@
-/* Year Map — chunky tile grid of topics for the selected year.
+/* Year Map: chunky tile grid of topics for the selected year.
    Each tile uses TiltCard for the 3D-on-hover effect. */
 
 function TopicTile({ topic, onOpen, progress }) {

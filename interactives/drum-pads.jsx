@@ -133,10 +133,20 @@ function DrumPads({ topic, difficulty, onComplete }) {
         {PADS.map(p => (
           <div
             key={p.id}
+            role="button"
+            tabIndex={0}
+            aria-label={p.label}
             className={"pad " + (flashing[p.id] ? "flash" : "")}
             style={{ background: flashing[p.id] ? p.color : "var(--bg-2)", color: flashing[p.id] ? "#fff" : "var(--ink)", aspectRatio: "1.2 / 1", minHeight: 64 }}
             onMouseDown={() => { p.play(); flash(p.id); }}
             onTouchStart={(e) => { e.preventDefault(); p.play(); flash(p.id); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                p.play();
+                flash(p.id);
+              }
+            }}
           >
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1rem" }}>{p.label}</div>
             <div className="mono" style={{ fontSize: ".65rem", opacity: .7 }}>{p.key}</div>

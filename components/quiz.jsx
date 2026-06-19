@@ -1,6 +1,6 @@
 /* Quiz components.
-   <Quiz questions onFinish /> — generic engine (used by module quizzes + tests).
-   <ModuleQuiz topic onResult />  — wrapper used at the end of a topic page.
+   <Quiz questions onFinish /> generic engine (used by module quizzes + tests).
+   <ModuleQuiz topic onResult />  wrapper used at the end of a topic page.
 */
 
 function Quiz({ questions, onFinish, label = "Quiz", showExplain = true, showTopic = false }) {
@@ -164,7 +164,7 @@ function Quiz({ questions, onFinish, label = "Quiz", showExplain = true, showTop
   );
 }
 
-/* Module quiz — top-level wrapper used at the end of each TopicPage.
+/* Module quiz: top-level wrapper used at the end of each TopicPage.
    Records the result to whs.quizScores[topicId]. */
 function ModuleQuiz({ topic, onResult }) {
   const pool = window.QUIZ_BY_TOPIC[topic.id];

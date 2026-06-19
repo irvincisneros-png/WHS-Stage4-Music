@@ -3,7 +3,7 @@
 # It starts a small web server and opens the site in your browser.
 # (Opening index.html directly with a double-click shows a blank page,
 #  because browsers block in-browser Babel from loading the .jsx files
-#  over file:// — a local web server fixes that.)
+#  over file://; a local web server fixes that.)
 
 # Move into the folder this script lives in.
 cd "$(dirname "$0")" || exit 1

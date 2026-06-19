@@ -1,4 +1,4 @@
-/* Tiny Web Audio engine — synth voices for piano, drum kit, click metronome.
+/* Tiny Web Audio engine: synth voices for piano, drum kit, click metronome.
    Exposed on window.MusicAudio. Honors window.__SOUND_ON (set by Tweaks). */
 
 (function () {
@@ -41,7 +41,7 @@
 
   // Run `fn(ctx)` once the AudioContext is actually running. If it's still
   // suspending (the very first user gesture often races with the first
-  // playPiano call), we wait for resume() to settle before scheduling — so
+  // playPiano call), we wait for resume() to settle before scheduling, so
   // oscillator events don't get queued against a frozen clock and dropped.
   function ifReady(fn) {
     const c = resume();
@@ -51,7 +51,7 @@
     if (p && typeof p.then === "function") {
       p.then(() => fn(c)).catch(() => {});
     } else {
-      // very old browsers — best-effort
+      // very old browsers: best-effort
       setTimeout(() => fn(c), 30);
     }
   }
@@ -126,7 +126,7 @@
     });
   }
 
-  // pluck — for guitar chords
+  // pluck: for guitar chords
   function playPluck(name, dur = 1.2, velocity = 0.75) {
     if (!ok()) return;
     const f = hzFromName(name); if (!f) return;

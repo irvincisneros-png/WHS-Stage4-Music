@@ -1,4 +1,4 @@
-/* ConceptVisuals — small, on-topic SVG illustrations used on section hero
+/* ConceptVisuals: small, on-topic SVG illustrations used on section hero
    cards. Each visual takes a viewport of roughly 320×180 and uses
    currentColor + a few accent rgba-white tones so it inherits the parent
    topic's theme colour from .tile-art.
@@ -8,7 +8,7 @@
 /* ============================================================
    Helpers
    ============================================================ */
-/* Ink palette — uses currentColor so the visual inherits the tile-art's
+/* Ink palette: uses currentColor so the visual inherits the tile-art's
    foreground (white on dark themes, dark on light "butter"/"pink" themes).
    color-mix gives us layered opacity without hardcoding any base colour. */
 const cv_ink = "currentColor";
@@ -30,12 +30,12 @@ function CVFrame({ children, viewBox = "0 0 320 180" }) {
 }
 
 /* ============================================================
-   STAFF — clef, optional notes, optional time-sig.
+   STAFF · clef, optional notes, optional time-sig.
    Supports treble / bass / grand. ============================ */
 function cvStaff(props = {}) {
   const { clef = "treble", notes = [], timeSig, label, markers = [] } = props;
 
-  // Use Unicode music glyphs — way more reliable than hand-drawn paths.
+  // Use Unicode music glyphs: way more reliable than hand-drawn paths.
   // U+1D11E = 𝄞 treble, U+1D122 = 𝄢 bass. Rendered in a serif/music font.
   function ClefGlyph({ x, y, char, size = 64 }) {
     return (
@@ -145,7 +145,7 @@ function cvStaff(props = {}) {
 }
 
 /* ============================================================
-   KEYS — mini keyboard with marked notes ====================== */
+   KEYS · mini keyboard with marked notes ====================== */
 function cvKeys(props = {}) {
   const { octaves = 1, highlight = [], labels = [], finger = false, label } = props;
   const whiteCount = 7 * octaves;
@@ -217,7 +217,7 @@ function cvKeys(props = {}) {
 }
 
 /* ============================================================
-   GROOVE — small step-grid of rows × steps =================== */
+   GROOVE · small step-grid of rows × steps =================== */
 function cvGroove(props = {}) {
   const { rows = [], steps = 8, label } = props;
   const W = 300;
@@ -260,7 +260,7 @@ function cvGroove(props = {}) {
 }
 
 /* ============================================================
-   CHORDS — N chord diagrams in a row ========================= */
+   CHORDS · N chord diagrams in a row ========================= */
 function cvChords(props = {}) {
   const { chords = [] } = props;
   // Each chord: { name, frets: "x-3-2-0-1-0" }
@@ -314,7 +314,7 @@ function cvChords(props = {}) {
 }
 
 /* ============================================================
-   NUMERALS — Roman-numeral cadence ============================ */
+   NUMERALS · Roman-numeral cadence ============================ */
 function cvNumerals(props = {}) {
   const { sequence = ["I","IV","V","I"], label, op = "→" } = props;
   return (
@@ -348,7 +348,7 @@ function cvNumerals(props = {}) {
 }
 
 /* ============================================================
-   NOTE VALUES — semibreve → semiquaver ======================= */
+   NOTE VALUES · semibreve to semiquaver ======================= */
 function cvNoteValues() {
   const items = [
     { n: "𝅝",  label: "Semibreve", beats: "4" },
@@ -383,7 +383,7 @@ function cvNoteValues() {
 }
 
 /* ============================================================
-   TIME SIGNATURE — two side-by-side ========================== */
+   TIME SIGNATURE · two side-by-side ========================== */
 function cvTimeSig(props = {}) {
   const { sigs = [{ s: "4/4", feel: "Common" }, { s: "3/4", feel: "Waltz" }, { s: "6/8", feel: "Lilt" }] } = props;
   return (
@@ -419,7 +419,7 @@ function cvTimeSig(props = {}) {
 }
 
 /* ============================================================
-   DYNAMICS — pp to ff gradient ramp =========================== */
+   DYNAMICS · pp to ff gradient ramp =========================== */
 function cvDynamics() {
   const marks = ["pp","p","mp","mf","f","ff"];
   return (
@@ -445,7 +445,7 @@ function cvDynamics() {
 }
 
 /* ============================================================
-   TEXTURE LINES — 1, 2 or 3 stacked melodic lines ============= */
+   TEXTURE LINES · 1, 2 or 3 stacked melodic lines ============= */
 function cvTextureLines(props = {}) {
   const { mode = "poly" } = props;
   const kind = mode;
@@ -480,7 +480,7 @@ function cvTextureLines(props = {}) {
 }
 
 /* ============================================================
-   CHIPS — generic labeled-chip grid =========================== */
+   CHIPS · generic labeled-chip grid =========================== */
 function cvChips(props = {}) {
   const { items = [], cols = 3, label } = props;
   const rows = Math.ceil(items.length / cols);
@@ -516,7 +516,7 @@ function cvChips(props = {}) {
 }
 
 /* ============================================================
-   STRUM — D/U arrow pattern =================================== */
+   STRUM · D/U arrow pattern =================================== */
 function cvStrum(props = {}) {
   const { pattern = ["D","D","u","D","u","D","u"], label = "ONE BAR · 8 SUBDIVISIONS" } = props;
   return (
@@ -550,7 +550,7 @@ function cvStrum(props = {}) {
 }
 
 /* ============================================================
-   TAB — guitar tablature snippet ============================== */
+   TAB · guitar tablature snippet ============================== */
 function cvTab(props = {}) {
   const { lines = ["e|--0--3--5----", "B|--1--3--5----", "G|--0--2--5----", "D|--2--0--7----", "A|--3-----7----", "E|--x--------5-"] } = props;
   return (
@@ -567,7 +567,7 @@ function cvTab(props = {}) {
 }
 
 /* ============================================================
-   FLOW — boxes with arrows for "A → B" or "A vs B" ============ */
+   FLOW · boxes with arrows for "A to B" or "A vs B" ============ */
 function cvFlow(props = {}) {
   const { boxes = [{ big: "A" }, { big: "B" }], op = "→", label } = props;
   const N = boxes.length;
@@ -610,7 +610,7 @@ function cvFlow(props = {}) {
 }
 
 /* ============================================================
-   FORM BLOCKS — INTRO V C V C B C OUTRO ======================= */
+   FORM BLOCKS · INTRO V C V C B C OUTRO ======================= */
 function cvForm(props = {}) {
   const { blocks = [
     { l: "INTRO", w: 1 },
@@ -651,7 +651,7 @@ function cvForm(props = {}) {
 }
 
 /* ============================================================
-   SEATING — orchestra concentric arcs ========================= */
+   SEATING · orchestra concentric arcs ========================= */
 function cvSeating() {
   const families = [
     { r: 78, label: "PERC · BRASS", accent: false },
@@ -684,7 +684,7 @@ function cvSeating() {
 }
 
 /* ============================================================
-   MAJOR / MINOR — two stacked triads ========================== */
+   MAJOR / MINOR · two stacked triads ========================== */
 function cvMajorMinor() {
   // Two staves side by side, C-E-G vs C-Eb-G
   return (
@@ -737,7 +737,7 @@ function cvMajorMinor() {
 }
 
 /* ============================================================
-   BEAT vs RHYTHM — two stacked layers ========================= */
+   BEAT vs RHYTHM · two stacked layers ========================= */
 function cvBeatRhythm() {
   return (
     <CVFrame>
@@ -762,7 +762,7 @@ function cvBeatRhythm() {
 }
 
 /* ============================================================
-   PASSES — listening passes ==================================== */
+   PASSES · listening passes ==================================== */
 function cvPasses() {
   const passes = ["TEXTURE", "STRUCTURE", "TIMBRE", "DYNAMICS"];
   return (
@@ -789,7 +789,7 @@ function cvPasses() {
 }
 
 /* ============================================================
-   BPM — slow → fast gauge ===================================== */
+   BPM · slow to fast gauge ===================================== */
 function cvBPM() {
   const ticks = [60, 80, 100, 120];
   return (
@@ -823,11 +823,11 @@ function cvBPM() {
 }
 
 /* ============================================================
-   JOURNAL — lined-page glance ================================== */
+   JOURNAL · lined-page glance ================================== */
 function cvJournal() {
   const lines = [
     { label: "KEPT",   text: "swung 8ths in the chorus" },
-    { label: "CUT",    text: "6/8 verse — fought the chorus" },
+    { label: "CUT",    text: "6/8 verse (fought the chorus)" },
     { label: "LISTEN", text: "tracks 1, 3, 7 of the album" },
   ];
   return (
@@ -854,7 +854,7 @@ function cvJournal() {
 }
 
 /* ============================================================
-   Renderer — pick visual by kind ============================== */
+   Renderer · pick visual by kind ============================== */
 function ConceptVisual({ visual }) {
   if (!visual) return null;
   switch (visual.kind) {

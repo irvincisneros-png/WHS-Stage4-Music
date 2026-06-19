@@ -1,4 +1,4 @@
-/* SectionPage — full-page detail view for one section of a module.
+/* SectionPage: full-page detail view for one section of a module.
    Reached via hash route #/year/topicId/s/<index>. Shows the section
    heading + extended reading, a CC image (with credit), one or more
    embedded interactives, and forward/back nav within the topic. */
@@ -13,7 +13,7 @@ function outcomeChipsSec(outcomes) {
   return (outcomes || []).map(o => OUTCOME_MAP_SEC[o]).filter(Boolean);
 }
 
-/* ConceptCard — typographic "title card" tied directly to the concept being
+/* ConceptCard: typographic "title card" tied directly to the concept being
    taught. Used instead of stock photos: every panel actually names what the
    section is about. Uses the parent topic's theme colour + glyph for visual
    continuity with the rest of the curriculum. */
@@ -37,7 +37,7 @@ function ConceptCard({ image, topic }) {
         alignItems: "stretch",
         minHeight: 240,
       }}>
-        {/* Decorative dotted grid — quiet, on-brand */}
+        {/* Decorative dotted grid (quiet, on-brand) */}
         <div aria-hidden="true" style={{
           position: "absolute", inset: 0,
           background:
@@ -47,7 +47,7 @@ function ConceptCard({ image, topic }) {
           pointerEvents: "none",
         }}></div>
 
-        {/* Left — visual (or full-width text if no visual) */}
+        {/* Left: visual (or full-width text if no visual) */}
         {hasVisual && (
           <div style={{
             position: "relative", zIndex: 1,
@@ -62,7 +62,7 @@ function ConceptCard({ image, topic }) {
           </div>
         )}
 
-        {/* Right — text column */}
+        {/* Right: text column */}
         <div style={{
           position: "relative", zIndex: 1,
           display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -161,7 +161,7 @@ function SectionImage({ image, topic }) {
 
   if (!image) return null;
 
-  // Concept cards: typographic illustration tied to the lesson — no stock photo risk.
+  // Concept cards: typographic illustration tied to the lesson (no stock photo risk).
   if (image.kind === "concept") return <ConceptCard image={image} topic={topic} />;
 
   const fallback = (
@@ -178,7 +178,7 @@ function SectionImage({ image, topic }) {
       textAlign: "center",
     }}>
       <span className="mono text-soft" style={{ fontSize: ".82rem", maxWidth: 360, lineHeight: 1.5 }}>
-        {image.alt || "Image unavailable — open the source link below to view."}
+        {image.alt || "Image unavailable. Open the source link below to view."}
       </span>
     </div>
   );
@@ -411,7 +411,7 @@ function SectionPage({ year, topic, sectionIndex, onBack, onNavigate, onNavigate
             <section className="chunk paper" style={{ padding: "22px 26px" }}>
               <div className="eyebrow mb-2">Practise this</div>
               <p className="text-soft" style={{ fontSize: ".95rem", marginBottom: 12 }}>
-                A dedicated interactive for this exact section isn't here yet — head back to
+                A dedicated interactive for this exact section isn't here yet. Head back to
                 the {topic.title} page for the module-level activity.
               </p>
               <button className="btn btn-primary" onClick={onBack}>

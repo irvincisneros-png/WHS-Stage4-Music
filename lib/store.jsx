@@ -1,14 +1,16 @@
-/* Student registry + namespaced storage.
-   All progress, XP and quiz data is stored under whs.s.<studentId>.<key>
-   so multiple students sharing a browser get independent profiles. */
+/* Local, anonymous progress storage.
+   There is no login and there are no student profiles. Everything for the
+   person using this browser is saved under one fixed namespace
+   (whs.local.<key>). No names, classes, or other personal data are collected
+   or stored anywhere. */
 
 (function () {
-  const STUDENTS_KEY = "whs.students";
-  const CURRENT_KEY  = "whs.currentStudent";
+  const NS = "whs.local.";
 
-  function genId() {
-    return "s_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-  }
+  // Fixed, nameless local "student". Kept as an object with a stable id so the
+  // rest of the app (originally written to be student-aware) keeps working
+  // unchanged. It carries no personal data.
+  const LOCAL = { id: "local" };
 
   function readJSON(k, d) {
     try { const v = localStorage.getItem(k); return v != null ? JSON.parse(v) : d; }
@@ -18,151 +20,47 @@
     try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
   }
 
-  function listStudents() {
-    const list = readJSON(STUDENTS_KEY, []);
-    return Array.isArray(list) ? list : [];
-  }
-  function saveStudents(list) { writeJSON(STUDENTS_KEY, list); }
+  // Always "signed in" as the single local profile.
+  function getCurrentStudent() { return LOCAL; }
 
-  function getCurrentStudentId() {
-    return localStorage.getItem(CURRENT_KEY) || null;
-  }
-  function setCurrentStudentId(id) {
-    if (id == null) localStorage.removeItem(CURRENT_KEY);
-    else localStorage.setItem(CURRENT_KEY, id);
-    window.dispatchEvent(new CustomEvent("whs:studentchange", { detail: { id } }));
-  }
-  function getCurrentStudent() {
-    const id = getCurrentStudentId(); if (!id) return null;
-    return listStudents().find(s => s.id === id) || null;
-  }
+  /* Namespaced key helpers: `whs.local.<key>` */
+  function readNS(key, dflt) { return readJSON(NS + key, dflt); }
+  function writeNS(key, value) { writeJSON(NS + key, value); }
+  function removeNS(key) { try { localStorage.removeItem(NS + key); } catch {} }
 
-  // Pool of colour themes a student can pick for their avatar tile
-  const AVATAR_COLORS = [
-    "terracotta", "teal", "butter", "espresso", "sky", "plum", "pink",
-  ];
-
-  function addStudent({ firstName, lastName, classCode, avatar }) {
-    const list = listStudents();
-    const id = genId();
-    const student = {
-      id,
-      firstName: (firstName || "").trim() || "Student",
-      lastName:  (lastName || "").trim(),
-      classCode: (classCode || "").trim(),
-      avatar:    avatar || AVATAR_COLORS[list.length % AVATAR_COLORS.length],
-      createdAt: Date.now(),
-      lastSeenAt: Date.now(),
-    };
-    list.push(student);
-    saveStudents(list);
-    return student;
-  }
-  function updateStudent(id, patch) {
-    const list = listStudents();
-    const i = list.findIndex(s => s.id === id);
-    if (i < 0) return null;
-    list[i] = { ...list[i], ...patch, lastSeenAt: Date.now() };
-    saveStudents(list);
-    return list[i];
-  }
-  function removeStudent(id) {
-    const list = listStudents().filter(s => s.id !== id);
-    saveStudents(list);
-    // Also wipe their data
-    Object.keys(localStorage).forEach(k => {
-      if (k.startsWith("whs.s." + id + ".")) localStorage.removeItem(k);
-    });
-    if (getCurrentStudentId() === id) setCurrentStudentId(null);
-  }
-
-  /* Namespaced key helpers: `whs.s.<id>.<key>` */
-  function nsKey(key) {
-    const id = getCurrentStudentId();
-    return id ? "whs.s." + id + "." + key : null;
-  }
-  function readNS(key, dflt) {
-    const k = nsKey(key); if (!k) return dflt;
-    return readJSON(k, dflt);
-  }
-  function writeNS(key, value) {
-    const k = nsKey(key); if (!k) return;
-    writeJSON(k, value);
-  }
-  function removeNS(key) {
-    const k = nsKey(key); if (!k) return;
-    localStorage.removeItem(k);
-  }
-
-  function initials(student) {
-    if (!student) return "?";
-    const f = (student.firstName || "")[0] || "";
-    const l = (student.lastName  || "")[0] || "";
-    return (f + l).toUpperCase() || "?";
-  }
-  function displayName(student) {
-    if (!student) return "Student";
-    return [student.firstName, student.lastName].filter(Boolean).join(" ") || "Student";
-  }
-
-  // ── Data portability ────────────────────────────────────────────────────
-
-  // Collect every localStorage key starting with "whs." and build a
-  // portable snapshot object. Returns a pretty-printed JSON string.
-  function exportAll() {
+  // Clear every bit of progress saved on this device (XP, badges, quiz scores,
+  // pre/post tests, current year). Used by the "Reset my progress" button.
+  function resetProgress() {
     try {
-      const data = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("whs.")) {
-          const raw = localStorage.getItem(k);
-          try { data[k] = JSON.parse(raw); }
-          catch { data[k] = raw; }
-        }
-      }
-      return JSON.stringify({ version: 1, exportedAt: Date.now(), data }, null, 2);
-    } catch {
-      return JSON.stringify({ version: 1, exportedAt: Date.now(), data: {} });
-    }
-  }
-
-  // Restore a snapshot produced by exportAll(). By default merges on top of
-  // existing data; pass { replace: true } to wipe all "whs." keys first.
-  // Returns { ok: true, studentCount: <n> } or throws on invalid input.
-  function importAll(jsonString, opts) {
-    opts = opts || {};
-    const parsed = JSON.parse(jsonString);
-    if (!parsed || typeof parsed !== "object" || !parsed.data || typeof parsed.data !== "object") {
-      throw new Error("Invalid backup file");
-    }
-    if (opts.replace) {
       const toRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith("whs.")) toRemove.push(k);
+        if (k && k.startsWith(NS)) toRemove.push(k);
       }
       toRemove.forEach(k => localStorage.removeItem(k));
-    }
-    const entries = Object.entries(parsed.data);
-    for (const [key, value] of entries) {
-      if (!key.startsWith("whs.")) continue;
-      localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
-    }
-    let studentCount = 0;
-    try {
-      const students = parsed.data[STUDENTS_KEY];
-      const arr = Array.isArray(students) ? students : (typeof students === "string" ? JSON.parse(students) : []);
-      studentCount = Array.isArray(arr) ? arr.length : 0;
-    } catch { studentCount = 0; }
-    return { ok: true, studentCount };
+    } catch {}
   }
 
+  // One-time cleanup of the old per-student login: deletes any leftover
+  // whs.students / whs.currentStudent registry and every whs.s.* profile
+  // namespace (names, classes, progress saved during earlier testing). Safe to
+  // run on every load; it's a no-op once nothing legacy remains.
+  (function purgeLegacyProfiles() {
+    try {
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k === "whs.students" || k === "whs.currentStudent" || k.startsWith("whs.s."))) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
+  })();
+
   window.Students = {
-    AVATAR_COLORS,
-    listStudents, addStudent, updateStudent, removeStudent,
-    getCurrentStudentId, setCurrentStudentId, getCurrentStudent,
+    getCurrentStudent,
     readNS, writeNS, removeNS,
-    initials, displayName,
-    exportAll, importAll,
+    resetProgress,
   };
 })();

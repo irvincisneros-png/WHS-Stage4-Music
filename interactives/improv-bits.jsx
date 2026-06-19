@@ -1,4 +1,4 @@
-/* ImprovLab — improvisation interactive for MU4-COM-01 (improvises, arranges or composes).
+/* ImprovLab: improvisation interactive for MU4-COM-01 (improvises, arranges or composes).
    Students improvise a melody over an auto-playing backing groove using a safe, "always sounds
    good" scale. Supports C major pentatonic and C blues scale. No import/export. */
 
@@ -9,7 +9,7 @@
 const SCALES = {
   pentatonic: {
     label: "C Major Pentatonic",
-    desc: "Five notes — C D E G A. Bright, open sound. Used in pop, folk, and rock worldwide.",
+    desc: "Five notes: C D E G A. Bright, open sound. Used in pop, folk, and rock worldwide.",
     notes: [
       { name: "C4",  display: "C",  key: "A" },
       { name: "D4",  display: "D",  key: "S" },
@@ -25,7 +25,7 @@ const SCALES = {
   },
   blues: {
     label: "C Blues Scale",
-    desc: "Six notes with a 'blue note' — C Eb F F# G Bb. Earthy, soulful. Blues, jazz and R&B.",
+    desc: "Six notes with a 'blue note': C Eb F F# G Bb. Earthy, soulful. Blues, jazz and R&B.",
     notes: [
       { name: "C4",   display: "C",   key: "A" },
       { name: "Eb4",  display: "Eb",  key: "S" },
@@ -49,10 +49,10 @@ const PROMPTS = [
   "Play a 4-note idea that starts high and falls.",
   "Repeat one note 3 times, then jump up.",
   "Try starting on the last note of the scale and work downward.",
-  "Play slow — leave some silence. Let the groove breathe.",
+  "Play slow. Leave some silence. Let the groove breathe.",
   "Use only 3 notes, but vary the rhythm.",
   "End on C. Does it feel like 'home'?",
-  "Start quiet, get louder — let the line crescendo.",
+  "Start quiet, get louder. Let the line crescendo.",
   "Copy the rhythm of the kick drum in your melody.",
 ];
 
@@ -219,7 +219,7 @@ function ImprovLab({ scale: scaleProp = "pentatonic", bpm: bpmProp = 92 }) {
         color: "var(--ink-soft)",
       }}>
         <strong style={{ color: "var(--ink)" }}>Improvisation</strong> means making music up
-        in the moment — no wrong turns. Every note in this scale will fit with the groove.
+        in the moment. There are no wrong turns. Every note in this scale will fit with the groove.
         Start the backing track, then tap the pads (or press{" "}
         <span className="mono" style={{ color: "var(--ink)", fontSize: ".82rem" }}>A S D F G H J</span>
         ) to build your own melody on top.
@@ -322,7 +322,7 @@ function ImprovLab({ scale: scaleProp = "pentatonic", bpm: bpmProp = 92 }) {
       {/* ---- Note pads ---- */}
       <div>
         <div className="eyebrow mb-2">
-          Melody pads — tap, click, or press keyboard keys
+          Melody pads: tap, click, or press keyboard keys
         </div>
         <div style={{
           display: "grid",

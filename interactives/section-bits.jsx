@@ -27,7 +27,7 @@ function useBeat(bpm, steps, playing) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 1. TapPulse — tap in time, see how close to the beat                */
+/* 1. TapPulse: tap in time, see how close to the beat                 */
 /* ------------------------------------------------------------------ */
 function TapPulse({ bpm = 90, label = "Tap a steady beat" }) {
   const [playing, setPlaying] = useSt(false);
@@ -120,7 +120,7 @@ function TapPulse({ bpm = 90, label = "Tap a steady beat" }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 2. MiniStepGrid — generic step sequencer (rows is array of voices)  */
+/* 2. MiniStepGrid: generic step sequencer (rows is array of voices)   */
 /* ------------------------------------------------------------------ */
 function MiniStepGrid({ rows, steps = 8, bpm = 100, title = "Step sequencer", preset }) {
   const [grid, setGrid] = useSt(() => {
@@ -190,7 +190,7 @@ function MiniStepGrid({ rows, steps = 8, bpm = 100, title = "Step sequencer", pr
 }
 
 /* ------------------------------------------------------------------ */
-/* 3. MiniStaff — clickable staff (treble / bass)                      */
+/* 3. MiniStaff: clickable staff (treble / bass)                       */
 /* ------------------------------------------------------------------ */
 function MiniStaff({ clef = "treble" }) {
   /* Position numbering: lines are drawn at pos 1, 3, 5, 7, 9 (top → bottom).
@@ -202,7 +202,7 @@ function MiniStaff({ clef = "treble" }) {
     { pos: 10, name: "D4", label: "D4 (just below staff)" },
     { pos: 9,  name: "E4", label: "E4 (bottom line)" },
     { pos: 8,  name: "F4", label: "F4 (1st space)" },
-    { pos: 7,  name: "G4", label: "G4 (2nd line — clef curl)" },
+    { pos: 7,  name: "G4", label: "G4 (2nd line, clef curl)" },
     { pos: 6,  name: "A4", label: "A4 (2nd space)" },
     { pos: 5,  name: "B4", label: "B4 (middle line)" },
     { pos: 4,  name: "C5", label: "C5 (3rd space)" },
@@ -219,7 +219,7 @@ function MiniStaff({ clef = "treble" }) {
     { pos: 6,  name: "C3", label: "C3 (2nd space)" },
     { pos: 5,  name: "D3", label: "D3 (middle line)" },
     { pos: 4,  name: "E3", label: "E3 (3rd space)" },
-    { pos: 3,  name: "F3", label: "F3 (4th line — the F-clef line)" },
+    { pos: 3,  name: "F3", label: "F3 (4th line, the F-clef line)" },
     { pos: 2,  name: "G3", label: "G3 (top space)" },
     { pos: 1,  name: "A3", label: "A3 (top line)" },
     { pos: -1, name: "C4", label: "Middle C (1 ledger above)" },
@@ -267,7 +267,18 @@ function MiniStaff({ clef = "treble" }) {
             const x = 110 + i * 35;
             const y = ystaff(n.pos);
             return (
-              <g key={n.name} style={{ cursor: "pointer" }} onClick={() => clickNote(n)}>
+              <g key={n.name}
+                style={{ cursor: "pointer" }}
+                onClick={() => clickNote(n)}
+                tabIndex={0}
+                role="button"
+                aria-label={`${n.name} - ${n.label}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    clickNote(n);
+                  }
+                }}>
                 {/* ledger line below the staff (e.g. Middle C in treble at pos 11) */}
                 {n.pos >= 11 && <line x1={x - 11} y1={ystaff(11)} x2={x + 11} y2={ystaff(11)} stroke="var(--ink)" strokeWidth="1.5"/>}
                 {/* ledger line above the staff (e.g. Middle C in bass at pos -1) */}
@@ -290,7 +301,7 @@ function MiniStaff({ clef = "treble" }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 4. NoteValueLab — buttons for different note durations              */
+/* 4. NoteValueLab: buttons for different note durations               */
 /* ------------------------------------------------------------------ */
 function NoteValueLab({ bpm = 80 }) {
   const beatMs = 60_000 / bpm;
@@ -339,7 +350,7 @@ function NoteValueLab({ bpm = 80 }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 5. MiniKeys — small interactive keyboard                            */
+/* 5. MiniKeys: small interactive keyboard                             */
 /* ------------------------------------------------------------------ */
 function MiniKeys({ startMidi = 60, octaves = 1, highlight = [], labelMode = "letters" }) {
   // Generate notes
@@ -391,8 +402,20 @@ function MiniKeys({ startMidi = 60, octaves = 1, highlight = [], labelMode = "le
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
           {whiteKeys.map((m, i) => {
             const isHi = highlight.includes(nameForMidi(m).replace(/\d/, ""));
+            const noteName = nameForMidi(m);
             return (
-              <g key={"w"+m} onClick={() => play(m)} style={{ cursor: "pointer" }}>
+              <g key={"w"+m}
+                onClick={() => play(m)}
+                style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Play ${noteName}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    play(m);
+                  }
+                }}>
                 <rect x={i*kw} y={0} width={kw-1} height={H}
                       fill={isHi ? "var(--butter)" : "#fff"} stroke="var(--ink-soft)" strokeWidth="1"/>
                 {labelMode === "letters" && (
@@ -407,8 +430,20 @@ function MiniKeys({ startMidi = 60, octaves = 1, highlight = [], labelMode = "le
           {blackKeys.map((m) => {
             const x = blackXFor(m);
             const isHi = highlight.includes(nameForMidi(m).replace(/\d/, ""));
+            const noteName = nameForMidi(m);
             return (
-              <g key={"b"+m} onClick={() => play(m)} style={{ cursor: "pointer" }}>
+              <g key={"b"+m}
+                onClick={() => play(m)}
+                style={{ cursor: "pointer" }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Play ${noteName}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === " ") e.preventDefault();
+                    play(m);
+                  }
+                }}>
                 <rect x={x} y={0} width={kw*0.64} height={H*0.62}
                       fill={isHi ? "var(--terracotta)" : "var(--ink)"} stroke="#000"/>
                 {labelMode === "letters" && (
@@ -427,7 +462,7 @@ function MiniKeys({ startMidi = 60, octaves = 1, highlight = [], labelMode = "le
 }
 
 /* ------------------------------------------------------------------ */
-/* 6. ChordPicker — buttons for chords                                 */
+/* 6. ChordPicker: buttons for chords                                  */
 /* ------------------------------------------------------------------ */
 function ChordPicker({ chords, title = "Chord library" }) {
   const [active, setActive] = useSt(null);
@@ -464,7 +499,7 @@ function ChordPicker({ chords, title = "Chord library" }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 7. TextureToggles — mono / homo / poly layer toggler                */
+/* 7. TextureToggles: mono / homo / poly layer toggler                 */
 /* ------------------------------------------------------------------ */
 function TextureToggles() {
   const [layers, setLayers] = useSt({ melody: true, chords: false, counter: false });
@@ -526,7 +561,7 @@ function TextureToggles() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 8. MajorMinorAB — same melody, two tonalities                       */
+/* 8. MajorMinorAB: same melody, two tonalities                        */
 /* ------------------------------------------------------------------ */
 function MajorMinorAB() {
   const [mode, setMode] = useSt(null);
@@ -543,7 +578,7 @@ function MajorMinorAB() {
     <div className="chunk paper" style={{ padding: 22, display: "grid", gap: 14 }}>
       <div>
         <div className="eyebrow">A / B compare</div>
-        <strong>Major vs Minor — same melody, third flips</strong>
+        <strong>Major vs Minor: same melody, third flips</strong>
       </div>
       <div className="row gap-3 wrap">
         <button className="btn btn-primary" onClick={() => play("major")}
@@ -562,14 +597,14 @@ function MajorMinorAB() {
         </button>
       </div>
       <p className="text-soft" style={{ fontSize: ".85rem" }}>
-        Same melody. The only difference is the third — half a step darker in minor. Your ear catches that immediately.
+        Same melody. The only difference is the third, which sits half a step darker in minor. Your ear catches that immediately.
       </p>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* 9. OrchestraFamilies — 4 family tabs with timbre demo               */
+/* 9. OrchestraFamilies: 4 family tabs with timbre demo                */
 /* ------------------------------------------------------------------ */
 function OrchestraFamilies() {
   const families = [
@@ -621,7 +656,7 @@ function OrchestraFamilies() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 10. MCQ — generic multiple choice                                   */
+/* 10. MCQ: generic multiple choice                                    */
 /* ------------------------------------------------------------------ */
 function MCQ({ title = "Quick check", items }) {
   const [answers, setAnswers] = useSt({});
@@ -669,7 +704,7 @@ function MCQ({ title = "Quick check", items }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 11. BreathTimer — animated 4-8 breath circle                        */
+/* 11. BreathTimer: animated 4-8 breath circle                         */
 /* ------------------------------------------------------------------ */
 function BreathTimer() {
   const [running, setRunning] = useSt(false);
@@ -721,7 +756,7 @@ function BreathTimer() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 12. DynamicsDemo — pp..ff with playback                             */
+/* 12. DynamicsDemo: pp..ff with playback                              */
 /* ------------------------------------------------------------------ */
 function DynamicsDemo() {
   const levels = [
@@ -767,7 +802,7 @@ function DynamicsDemo() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 13. FormBuilder — arrange A/B/C blocks into a structure             */
+/* 13. FormBuilder: arrange A/B/C blocks into a structure              */
 /* ------------------------------------------------------------------ */
 function FormBuilder() {
   const blocks = [
@@ -801,7 +836,7 @@ function FormBuilder() {
       <div className="row between center wrap gap-2">
         <div>
           <div className="eyebrow">Form lab</div>
-          <strong>Arrange the song · {form.join(" — ")}</strong>
+          <strong>Arrange the song · {form.join(" · ")}</strong>
         </div>
         <button className="btn btn-primary" onClick={() => setPlaying(p => !p)}>
           {playing ? "■ Stop" : "▶ Play form"}
@@ -835,7 +870,7 @@ function FormBuilder() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 14. GraphicScoreCanvas — draw and replay shapes                     */
+/* 14. GraphicScoreCanvas: draw and replay shapes                      */
 /* ------------------------------------------------------------------ */
 function GraphicScoreCanvas() {
   const [shapes, setShapes] = useSt([]);
@@ -892,6 +927,20 @@ function GraphicScoreCanvas() {
         ))}
       </div>
       <div onClick={add}
+        tabIndex={0}
+        role="button"
+        aria-label={`Graphic score canvas. Press Enter or Space to place a ${tool.label} sound at the centre.`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            if (e.key === " ") e.preventDefault();
+            // Place sound at centre of the canvas
+            const el = e.currentTarget;
+            const r = el.getBoundingClientRect();
+            Audio()?.resume();
+            tool.play();
+            setShapes(s => [...s, { x: 0.5, y: 0.5, t: tool.id, color: tool.color }]);
+          }
+        }}
         style={{
           height: 220, background: "linear-gradient(90deg, var(--bg) 0%, var(--bg-2) 100%)",
           border: "1.5px dashed var(--border)", borderRadius: 14, position: "relative",
@@ -913,7 +962,7 @@ function GraphicScoreCanvas() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 15. CMajorScale — a play-along scale ladder                         */
+/* 15. CMajorScale: a play-along scale ladder                          */
 /* ------------------------------------------------------------------ */
 function ScaleLadder({ name = "C major", notes = ["C4","D4","E4","F4","G4","A4","B4","C5"] }) {
   const [playing, setPlaying] = useSt(-1);
@@ -949,7 +998,7 @@ function ScaleLadder({ name = "C major", notes = ["C4","D4","E4","F4","G4","A4",
 }
 
 /* ------------------------------------------------------------------ */
-/* 16. TabReader — guitar fretboard + tab playback                     */
+/* 16. TabReader: guitar fretboard + tab playback                      */
 /* ------------------------------------------------------------------ */
 function TabReader({ tabs, frets = 7 }) {
   const TABS = tabs && tabs.length ? tabs : [
@@ -1058,7 +1107,7 @@ function TabReader({ tabs, frets = 7 }) {
         </div>
       </div>
 
-      {/* Tab "staff" — clickable */}
+      {/* Tab "staff": clickable */}
       <div style={{
         background: "var(--bg)",
         border: "1.5px solid var(--border)",
@@ -1078,9 +1127,22 @@ function TabReader({ tabs, frets = 7 }) {
             {tab.notes.map((n, i) => {
               const isOn = n.s === si;
               const active = pos === i;
+              // Only the string that owns this note position is interactive
+              // (the "-" dashes on other strings are decorative)
+              const isInteractive = isOn;
               return (
                 <span key={i}
-                  onClick={() => { stop(); strike(i); }}
+                  onClick={isInteractive ? () => { stop(); strike(i); } : undefined}
+                  tabIndex={isInteractive ? 0 : undefined}
+                  role={isInteractive ? "button" : undefined}
+                  aria-label={isInteractive ? `Note ${i + 1}: string ${name}, fret ${n.f}` : undefined}
+                  onKeyDown={isInteractive ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (e.key === " ") e.preventDefault();
+                      stop();
+                      strike(i);
+                    }
+                  } : undefined}
                   style={{
                     display: "inline-block",
                     minWidth: 28,
@@ -1088,7 +1150,7 @@ function TabReader({ tabs, frets = 7 }) {
                     padding: "5px 2px",
                     margin: "1px",
                     borderRadius: 6,
-                    cursor: "pointer",
+                    cursor: isInteractive ? "pointer" : "default",
                     fontWeight: isOn ? 800 : 400,
                     fontSize: 14,
                     background: active && isOn ? "var(--terracotta)"
@@ -1100,7 +1162,7 @@ function TabReader({ tabs, frets = 7 }) {
                     opacity: isOn ? 1 : 0.6,
                     transition: "background .12s, color .12s",
                   }}>
-                  {isOn ? n.f : "—"}
+                  {isOn ? n.f : "-"}
                 </span>
               );
             })}
@@ -1245,7 +1307,7 @@ function TabReader({ tabs, frets = 7 }) {
         (thin <span className="mono" style={{ color: "var(--ink)" }}>e</span>);
         the BOTTOM line is the lowest (thick{" "}
         <span className="mono" style={{ color: "var(--ink)" }}>E</span>).
-        A number tells you which <em>fret</em> to press on that string —{" "}
+        A number tells you which <em>fret</em> to press on that string:{" "}
         <span className="mono" style={{ color: "var(--ink)" }}>0</span> means
         play the string open. Read left to right, like text.
       </div>
@@ -1254,7 +1316,7 @@ function TabReader({ tabs, frets = 7 }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 17. ChordChart — annotated chord-diagram explainer                  */
+/* 17. ChordChart: annotated chord-diagram explainer                   */
 /* ------------------------------------------------------------------ */
 function ChordChart() {
   // frets: -1 = mute (X), 0 = open (O), n = press fret n
@@ -1398,14 +1460,14 @@ function ChordChart() {
           const rightLX = W + 16;
 
           const lines = [];
-          // NUT — left
+          // NUT, left
           lines.push({ key: "nut",
             x1: leftLX + 2, y1: PAD_T - 4,
             x2: PAD_L - 2,  y2: PAD_T - 1,
             color: cAcc,
             lx: leftLX, ly: PAD_T - 10,
             label: "NUT", anchor: "end" });
-          // FRET — left, between fret 1 and 2
+          // FRET, left, between fret 1 and 2
           lines.push({ key: "fret",
             x1: leftLX + 2, y1: yFret(1) + 8,
             x2: PAD_L - 2,  y2: yFret(1) + 8,
@@ -1550,7 +1612,7 @@ function ChordChart() {
         <FingerKey />
       </div>
 
-      {/* Chord picker — small diagrams + play */}
+      {/* Chord picker: small diagrams + play */}
       <div>
         <div className="eyebrow mb-2">Try the others</div>
         <div style={{
@@ -1561,6 +1623,16 @@ function ChordChart() {
           {CHORDS.map((c, i) => (
             <div key={c.name}
               onClick={() => setPicked(i)}
+              tabIndex={0}
+              role="button"
+              aria-label={`Select ${c.name} chord`}
+              aria-pressed={i === picked}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  if (e.key === " ") e.preventDefault();
+                  setPicked(i);
+                }
+              }}
               style={{
                 padding: "12px 10px 14px",
                 background: i === picked ? "var(--bg)" : "transparent",

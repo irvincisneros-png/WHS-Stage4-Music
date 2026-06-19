@@ -146,7 +146,7 @@
   <g transform="translate(340 350)">
     <rect width="200" height="120" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
     <text x="16" y="32" font-family="Georgia, serif" font-weight="700" font-size="16" fill="#c44a3a">5 · Vowel shapes</text>
-    <text x="16" y="52" font-family="Georgia, serif" font-size="12" fill="#5a3d08">Mee — May — Mah — Moh — Moo</text>
+    <text x="16" y="52" font-family="Georgia, serif" font-size="12" fill="#5a3d08">Mee · May · Mah · Moh · Moo</text>
     
     <g transform="translate(14 86)">
       <g>

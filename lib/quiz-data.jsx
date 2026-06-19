@@ -1,4 +1,4 @@
-/* Quiz banks — 4-option multiple choice for every Stage 4 topic.
+/* Quiz banks: 4-option multiple choice for every Stage 4 topic.
    Pre-test and Post-test sample one question per topic, randomised.
    Each question: { q, options: [a, b, c, d], answer: 0..3, why?: string } */
 

@@ -1,6 +1,5 @@
-/* Main App — student-aware, hash-routed.
-   If no current student, show the Login screen.
-   Once signed in, all progress/XP/quiz data is namespaced per-student. */
+/* Main App: hash-routed. No login. Progress/XP/quiz data is stored locally and
+   anonymously on this device (one nameless profile via window.Students). */
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
@@ -44,7 +43,7 @@ function setRouteHash({ year, topicId, special, sectionIdx }) {
   else                               location.hash = "#/" + year;
 }
 
-/* Per-student React state hook — reads/writes through Students.readNS / writeNS.
+/* Per-student React state hook. Reads/writes through Students.readNS / writeNS.
    Resets when the active student changes. */
 function useStudentLocal(key, initial, studentId) {
   const [v, setV] = React.useState(() => window.Students.readNS(key, initial));
@@ -86,36 +85,18 @@ function App() {
     window.__SOUND_ON = tweaks.sound;
   }, [tweaks.theme, tweaks.sound]);
 
-  // --- Student session ---
-  const [student, setStudent] = React.useState(() => window.Students.getCurrentStudent());
-
-  React.useEffect(() => {
-    const onChange = () => setStudent(window.Students.getCurrentStudent());
-    window.addEventListener("whs:studentchange", onChange);
-    return () => window.removeEventListener("whs:studentchange", onChange);
-  }, []);
-
-  function signOut() {
-    window.Students.setCurrentStudentId(null);
-    // Drop hash so we re-enter at the year home next sign-in
-    if (location.hash) location.hash = "";
-  }
-
-  // If no student signed in, show login
-  if (!student) {
-    return <window.LoginScreen onSignIn={setStudent} />;
-  }
+  // No login. A single anonymous, device-local profile: no names, no class,
+  // no profile picker. Progress is saved to this browser only.
+  const student = window.Students.getCurrentStudent();
 
   return <SignedInApp
-    key={student.id}
     student={student}
-    onSignOut={signOut}
     tweaks={tweaks}
     setTweak={setTweak}
   />;
 }
 
-function SignedInApp({ student, onSignOut, tweaks, setTweak }) {
+function SignedInApp({ student, tweaks, setTweak }) {
   const studentId = student.id;
 
   const [storedYear, setStoredYear] = useStudentLocal("year", "year7", studentId);
@@ -177,39 +158,6 @@ function SignedInApp({ student, onSignOut, tweaks, setTweak }) {
     }
   }
 
-  // ---- Backup & restore (all profiles on this device) ----
-  const importRef = React.useRef(null);
-  function exportData() {
-    try {
-      const json = window.Students.exportAll();
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "stage4-music-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert("Sorry, the export failed: " + (e && e.message ? e.message : e));
-    }
-  }
-  function onImportFile(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ""; // let the same file be re-imported later
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const res = window.Students.importAll(String(reader.result), { replace: false });
-        alert("Restored " + (res.studentCount || 0) + " profile(s). Reloading…");
-        location.reload();
-      } catch (err) {
-        alert("That doesn't look like a valid Stage 4 Music backup file.");
-      }
-    };
-    reader.readAsText(file);
-  }
-
   const currentTopic = route.topicId
     ? window.CURRICULUM[year].topics.find(t => t.id === route.topicId)
     : null;
@@ -223,8 +171,6 @@ function SignedInApp({ student, onSignOut, tweaks, setTweak }) {
   return (
     <div className="app">
       <Header
-        student={student}
-        onSignOut={onSignOut}
         year={year}
         setYear={navigateYear}
         xp={xp} level={level} streak={streak}
@@ -344,32 +290,14 @@ function SignedInApp({ student, onSignOut, tweaks, setTweak }) {
             onChange={(v) => setTweak("difficulty", v)}
           />
         </window.TweakSection>
-        <window.TweakSection label="Account">
-          <window.TweakButton label={"Sign out (" + window.Students.displayName(student) + ")"} onClick={onSignOut} />
-          <window.TweakButton secondary label="Reset MY progress" onClick={() => {
-            if (!confirm("This wipes XP, badges, quiz scores and test results for " + window.Students.displayName(student) + ". Continue?")) return;
+        <window.TweakSection label="This device">
+          <window.TweakButton secondary label="Reset my progress" onClick={() => {
+            if (!confirm("This clears all progress saved on this device: XP, badges, quiz scores and test results. Continue?")) return;
             setProgress({}); setXp(0); setStreak(1);
-            window.Students.removeNS("quizScores");
-            window.Students.removeNS("preTest.year7");
-            window.Students.removeNS("preTest.year8");
-            window.Students.removeNS("postTest.year7");
-            window.Students.removeNS("postTest.year8");
+            window.Students.resetProgress();
           }} />
         </window.TweakSection>
-        <window.TweakSection label="Backup & restore">
-          <window.TweakButton label="Export all progress" onClick={exportData} />
-          <window.TweakButton secondary label="Import from file…" onClick={() => importRef.current && importRef.current.click()} />
-        </window.TweakSection>
       </window.TweaksPanel>
-
-      {/* Hidden file picker for restoring a backup */}
-      <input
-        ref={importRef}
-        type="file"
-        accept="application/json,.json"
-        style={{ display: "none" }}
-        onChange={onImportFile}
-      />
     </div>
   );
 }
@@ -407,7 +335,7 @@ function YearHome({ year, progress, preTest, postTest, completedCount, totalTopi
           title="Pre-Test"
           desc={preTest
             ? `Last score ${preTest.correct}/${preTest.total}. Have another go any time.`
-            : "One question per module. We'll suggest where to start."}
+            : "A short check across every topic. We'll suggest where to start."}
           onClick={() => openSpecial("pretest")}
         />
         <StartTile

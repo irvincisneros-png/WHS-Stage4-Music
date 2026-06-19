@@ -1,4 +1,4 @@
-/* Header — Woonona High School Music brand + Year switcher + HUD (XP, streak, theme) */
+/* Header: Woonona High School Music brand + Year switcher + HUD (XP, streak, theme) */
 
 function WoononaMark({ size = 44 }) {
   // School's official RISE crest.
@@ -19,11 +19,7 @@ function WoononaMark({ size = 44 }) {
 
 }
 
-function Header({ year, setYear, xp, level, streak, theme, setTheme, onOpenTweaks,
-  student, onSignOut }) {
-  const initials = student ? window.Students.initials(student) : "?";
-  const name = student ? window.Students.displayName(student) : "";
-  const avatar = student?.avatar || "terracotta";
+function Header({ year, setYear, xp, level, streak, theme, setTheme, onOpenTweaks }) {
   return (
     <header className="col gap-4" style={{ marginBottom: 28 }}>
       <div className="row between center wrap gap-4">
@@ -52,7 +48,7 @@ function Header({ year, setYear, xp, level, streak, theme, setTheme, onOpenTweak
             Year 8</button>
         </div>
 
-        <div className="row center gap-2 wrap">
+        <div className="row center gap-2 wrap no-print">
           <div className="hud-pill" title={`${xp} XP toward next level`}>
             <span style={{ color: "var(--butter-d)" }}>★</span>
             <span>LV {level}</span>
@@ -62,11 +58,6 @@ function Header({ year, setYear, xp, level, streak, theme, setTheme, onOpenTweak
             <span style={{ color: "var(--terracotta)" }}>♪</span>
             <span>{streak}d</span>
           </div>
-
-          {/* Student pill */}
-          {student &&
-          <StudentMenu student={student} initials={initials} name={name} avatar={avatar} onSignOut={onSignOut} />
-          }
 
           <button
             className="btn btn-ghost"
@@ -85,94 +76,6 @@ function Header({ year, setYear, xp, level, streak, theme, setTheme, onOpenTweak
         </div>
       </div>
     </header>);
-
-}
-
-/* Student avatar + dropdown menu in the header */
-function StudentMenu({ student, initials, name, avatar, onSignOut }) {
-  const [open, setOpen] = React.useState(false);
-  const wrapRef = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
-      <button
-        className="hud-pill"
-        onClick={() => setOpen((o) => !o)}
-        style={{ cursor: "pointer", paddingLeft: 6, paddingRight: 14, background: "var(--bg-2)" }}
-        aria-haspopup="menu"
-        aria-expanded={open}>
-        
-        <div className={"tile-art t-" + avatar} style={{
-          width: 28, height: 28, borderRadius: 999,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontFamily: "var(--font-display)",
-          fontWeight: 800, fontSize: ".75rem", letterSpacing: "-.02em"
-        }}>{initials}</div>
-        <span style={{
-          maxWidth: 120,
-          overflow: "hidden",
-          textOverflow: "ellipsis"
-        }}>{student.firstName || name}</span>
-        <span style={{ fontSize: ".7rem", opacity: .6 }}>▾</span>
-      </button>
-      {open &&
-      <div
-        role="menu"
-        style={{
-          position: "absolute",
-          top: "calc(100% + 8px)",
-          right: 0,
-          minWidth: 240,
-          background: "var(--bg-2)",
-          border: "1.5px solid var(--border)",
-          borderRadius: 18,
-          boxShadow: "0 8px 0 0 var(--border), 0 24px 40px -20px rgba(20,20,25,.25)",
-          padding: 8,
-          zIndex: 60
-        }}>
-        
-          <div style={{
-          padding: "10px 12px",
-          borderRadius: 12,
-          background: "var(--bg)",
-          marginBottom: 6
-        }}>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}>{name}</div>
-            {student.classCode &&
-          <div className="mono text-soft" style={{ fontSize: ".7rem", marginTop: 2 }}>
-                {student.classCode}
-              </div>
-          }
-          </div>
-          <button
-          onClick={() => {setOpen(false);onSignOut();}}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            display: "block",
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 10,
-            fontFamily: "var(--font-display)", fontWeight: 700,
-            color: "var(--terracotta)"
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = ""}>
-          
-            ↩ Sign out / switch profile
-          </button>
-        </div>
-      }
-    </div>);
 
 }
 
