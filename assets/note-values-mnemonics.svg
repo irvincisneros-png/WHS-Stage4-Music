@@ -1,0 +1,223 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Note values with food mnemonics: crotchet = Tea, two quavers = Coffee, four semiquavers = Coca-Cola, etc.">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f6f0e2"></stop>
+      <stop offset="100%" stop-color="#ece3cb"></stop>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="500" fill="url(#bg)"></rect>
+
+  
+  <g>
+    <rect x="20" y="18" width="260" height="32" rx="16" fill="#1f1a14"></rect>
+    <text x="38" y="39" font-family="ui-monospace, Menlo, monospace" font-size="12" letter-spacing="2" fill="#f6f0e2" font-weight="700">NOTE VALUES &amp; RHYTHM WORDS</text>
+  </g>
+  <text x="540" y="40" font-family="Georgia, serif" font-style="italic" font-size="14" fill="#5a3d08">Stage 4 · School mnemonics</text>
+
+  
+  
+
+  
+
+  
+
+  
+  <g transform="translate(40 70)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g transform="translate(90 80)">
+      <ellipse cx="0" cy="0" rx="7" ry="5" fill="#1f1a14" transform="rotate(-20)"></ellipse>
+      <line x1="7" y1="-2" x2="7" y2="-38" stroke="#1f1a14" stroke-width="1.8"></line>
+    </g>
+    
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="22" fill="#1f1a14">Crotchet</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">1 BEAT</text>
+    
+    <g transform="translate(90 178)">
+      <rect x="-44" y="-15" width="88" height="22" rx="11" fill="#c44a3a"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="14" fill="#fff">Tea</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(240 70)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g>
+      <ellipse cx="65" cy="80" rx="7" ry="5" fill="#1f1a14" transform="rotate(-20 65 80)"></ellipse>
+      <ellipse cx="115" cy="80" rx="7" ry="5" fill="#1f1a14" transform="rotate(-20 115 80)"></ellipse>
+      <line x1="72" y1="78" x2="72" y2="40" stroke="#1f1a14" stroke-width="1.8"></line>
+      <line x1="122" y1="78" x2="122" y2="40" stroke="#1f1a14" stroke-width="1.8"></line>
+      
+      <rect x="72" y="38" width="50" height="5" fill="#1f1a14"></rect>
+    </g>
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="22" fill="#1f1a14">2 Quavers</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">½ + ½ BEAT</text>
+    <g transform="translate(90 178)">
+      <rect x="-52" y="-15" width="104" height="22" rx="11" fill="#5a3d08"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="14" fill="#fff">Coff – ee</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(440 70)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g>
+      <ellipse cx="45" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 45 80)"></ellipse>
+      <ellipse cx="80" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 80 80)"></ellipse>
+      <ellipse cx="115" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 115 80)"></ellipse>
+      <ellipse cx="150" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 150 80)"></ellipse>
+      <line x1="51" y1="78" x2="51" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="86" y1="78" x2="86" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="121" y1="78" x2="121" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="156" y1="78" x2="156" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <rect x="51" y="38" width="105" height="4" fill="#1f1a14"></rect>
+      <rect x="51" y="46" width="105" height="4" fill="#1f1a14"></rect>
+    </g>
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="20" fill="#1f1a14">4 Semiquavers</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">¼ × 4 = 1 BEAT</text>
+    <g transform="translate(90 178)">
+      <rect x="-72" y="-15" width="144" height="22" rx="11" fill="#7c4a7e"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="13" fill="#fff">Co – ca – Co – la</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(640 70)">
+    <rect width="140" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="120" y2="60"></line>
+      <line x1="20" y1="70" x2="120" y2="70"></line>
+      <line x1="20" y1="80" x2="120" y2="80"></line>
+      <line x1="20" y1="90" x2="120" y2="90"></line>
+      <line x1="20" y1="100" x2="120" y2="100"></line>
+    </g>
+    
+    <g transform="translate(70 80)">
+      <ellipse cx="0" cy="0" rx="7" ry="5" fill="none" stroke="#1f1a14" stroke-width="2" transform="rotate(-20)"></ellipse>
+      <line x1="7" y1="-2" x2="7" y2="-38" stroke="#1f1a14" stroke-width="1.8"></line>
+    </g>
+    <text x="70" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="22" fill="#1f1a14">Minim</text>
+    <text x="70" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">2 BEATS</text>
+    <g transform="translate(70 178)">
+      <rect x="-46" y="-15" width="92" height="22" rx="11" fill="#1f6f5b"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="13" fill="#fff">Ee – eh</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(40 270)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g>
+      <ellipse cx="55" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 55 80)"></ellipse>
+      <ellipse cx="100" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 100 80)"></ellipse>
+      <ellipse cx="135" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 135 80)"></ellipse>
+      <line x1="61" y1="78" x2="61" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="106" y1="78" x2="106" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="141" y1="78" x2="141" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      
+      <rect x="61" y="38" width="80" height="4" fill="#1f1a14"></rect>
+      
+      <rect x="106" y="46" width="35" height="4" fill="#1f1a14"></rect>
+    </g>
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="18" fill="#1f1a14">Quaver + 2 Semi.</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">½ + ¼ + ¼ = 1 BEAT</text>
+    <g transform="translate(90 178)">
+      <rect x="-66" y="-15" width="132" height="22" rx="11" fill="#c44a3a"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="13" fill="#fff">Straw – ber – ry</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(240 270)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g>
+      <ellipse cx="45" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 45 80)"></ellipse>
+      <ellipse cx="80" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 80 80)"></ellipse>
+      <ellipse cx="125" cy="80" rx="6" ry="4.5" fill="#1f1a14" transform="rotate(-20 125 80)"></ellipse>
+      <line x1="51" y1="78" x2="51" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="86" y1="78" x2="86" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      <line x1="131" y1="78" x2="131" y2="40" stroke="#1f1a14" stroke-width="1.6"></line>
+      
+      <rect x="51" y="38" width="80" height="4" fill="#1f1a14"></rect>
+      
+      <rect x="51" y="46" width="35" height="4" fill="#1f1a14"></rect>
+    </g>
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="18" fill="#1f1a14">2 Semi. + Quaver</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">¼ + ¼ + ½ = 1 BEAT</text>
+    <g transform="translate(90 178)">
+      <rect x="-66" y="-15" width="132" height="22" rx="11" fill="#c44a3a"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="13" fill="#fff">Ber – ry – Straw</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(440 270)">
+    <rect width="180" height="190" rx="14" fill="#fff" stroke="#dcd2bb" stroke-width="1.5"></rect>
+    <g stroke="#1f1a14" stroke-width="1.2">
+      <line x1="20" y1="60" x2="160" y2="60"></line>
+      <line x1="20" y1="70" x2="160" y2="70"></line>
+      <line x1="20" y1="80" x2="160" y2="80"></line>
+      <line x1="20" y1="90" x2="160" y2="90"></line>
+      <line x1="20" y1="100" x2="160" y2="100"></line>
+    </g>
+    
+    <g transform="translate(90 80)" fill="none" stroke="#1f1a14" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M -8 -22 L 4 -8 L -6 6 L 6 22"></path>
+      <path d="M 4 12 q 6 4 4 14" stroke-width="2"></path>
+    </g>
+    <text x="90" y="138" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="22" fill="#1f1a14">Rest</text>
+    <text x="90" y="158" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#7a6840">SAME LENGTH · NO SOUND</text>
+    <g transform="translate(90 178)">
+      <rect x="-52" y="-15" width="104" height="22" rx="11" fill="#6e6e6e"></rect>
+      <text x="0" y="1" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-weight="700" font-size="14" fill="#fff">(silent)</text>
+    </g>
+  </g>
+
+  
+  <text x="640" y="298" font-family="Georgia, serif" font-style="italic" font-size="12" fill="#5a3d08">Say the word</text>
+  <text x="640" y="316" font-family="Georgia, serif" font-style="italic" font-size="12" fill="#5a3d08">while you clap</text>
+  <text x="640" y="334" font-family="Georgia, serif" font-style="italic" font-size="12" fill="#5a3d08">the rhythm —</text>
+  <text x="640" y="352" font-family="Georgia, serif" font-style="italic" font-size="12" fill="#5a3d08">your body learns</text>
+  <text x="640" y="370" font-family="Georgia, serif" font-style="italic" font-size="12" fill="#5a3d08">it instantly.</text>
+</svg>
