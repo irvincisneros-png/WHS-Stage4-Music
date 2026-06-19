@@ -166,7 +166,7 @@ function IcipBanner({ compact }) {
       </p>
       {!compact && (
         <p className="text-soft mt-2" style={{ fontSize: ".85rem" }}>
-          Class teachers: Ms Sharp, Ms Arnold, Ms Crighton and Mr Cisneros co-ordinate the
+          Class teachers: your Stage 4 Music teachers co-ordinate the
           repertoire list for these units.
         </p>
       )}

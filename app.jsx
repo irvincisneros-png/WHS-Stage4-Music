@@ -308,8 +308,8 @@ function SignedInApp({ student, onSignOut, tweaks, setTweak }) {
         </div>
         <div className="col gap-2" style={{ textAlign: "right" }}>
           <span className="eyebrow">Teaching team</span>
-          <span>Ms Sharp · Ms Arnold</span>
-          <span>Ms Crighton · Mr Cisneros</span>
+          <span>Music Faculty</span>
+          <span>Woonona High School</span>
         </div>
       </footer>
 

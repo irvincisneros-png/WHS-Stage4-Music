@@ -6,7 +6,7 @@
 
 const CURRICULUM = {
   year7: {
-    label: "Year 7 · 7MUS5",
+    label: "Year 7",
     eyebrow: "Foundations of music",
     intro:
       "Pick any topic to read more, listen, and try the interactive. Work in any order. The site's here whenever class isn't.",
@@ -243,7 +243,7 @@ const CURRICULUM = {
   },
 
   year8: {
-    label: "Year 8 · 8MUS4",
+    label: "Year 8",
     eyebrow: "Concepts in depth",
     intro:
       "Building on Year 7: deeper harmony, aural analysis, arranging, the elements in depth, the orchestra, film music, and two-handed keyboard with bass clef.",

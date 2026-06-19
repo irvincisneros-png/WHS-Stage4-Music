@@ -106,7 +106,7 @@ function LoginScreen({ onSignIn }) {
       {/* Footer */}
       <div className="text-soft center-text mt-6" style={{ fontSize: ".82rem", maxWidth: 600, lineHeight: 1.5 }}>
         Profiles and progress live on this device only.
-        Teaching team: Ms Sharp, Ms Arnold, Ms Crighton, Mr Cisneros.
+        Teaching team: your Stage 4 Music teachers.
       </div>
     </div>
   );
@@ -251,12 +251,12 @@ function CreateForm({ firstName, setFirstName, lastName, setLastName, classCode,
         <div>
           <label style={labelStyle}>First name</label>
           <input style={inputStyle} value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                 placeholder="e.g. Luna" autoFocus />
+                 placeholder="e.g. Alex" autoFocus />
         </div>
         <div>
           <label style={labelStyle}>Last name</label>
           <input style={inputStyle} value={lastName} onChange={(e) => setLastName(e.target.value)}
-                 placeholder="e.g. Cisneros" />
+                 placeholder="e.g. Lee" />
         </div>
       </div>
 
@@ -317,32 +317,32 @@ function CreateForm({ firstName, setFirstName, lastName, setLastName, classCode,
   );
 }
 
-/* ---------- Class picker — Year 7 (7MUS1–7MUS7, with 7MUSC4 as CAPA) and Year 8 (8MUS1–8MUS7) ---------- */
+/* ---------- Class picker — generic placeholder classes ---------- */
 
 function ClassPicker({ value, onChange }) {
   const groups = [
     {
       label: "Year 7",
       options: [
-        { code: "7MUS1" },
-        { code: "7MUS2" },
-        { code: "7MUS3" },
-        { code: "7MUSC4", note: "CAPA" },
-        { code: "7MUS5" },
-        { code: "7MUS6" },
-        { code: "7MUS7" },
+        { code: "7A" },
+        { code: "7B" },
+        { code: "7C" },
+        { code: "7D", note: "CAPA" },
+        { code: "7E" },
+        { code: "7F" },
+        { code: "7G" },
       ],
     },
     {
       label: "Year 8",
       options: [
-        { code: "8MUS1" },
-        { code: "8MUS2" },
-        { code: "8MUS3" },
-        { code: "8MUS4" },
-        { code: "8MUS5" },
-        { code: "8MUS6" },
-        { code: "8MUS7" },
+        { code: "8A" },
+        { code: "8B" },
+        { code: "8C" },
+        { code: "8D" },
+        { code: "8E" },
+        { code: "8F" },
+        { code: "8G" },
       ],
     },
   ];
@@ -413,7 +413,7 @@ function ClassPicker({ value, onChange }) {
             border: "1.2px solid var(--butter-d)",
           }}
         >CAPA</span>
-        <span>7MUSC4 is the Creative &amp; Performing Arts class.</span>
+        <span>7D is the Creative &amp; Performing Arts class.</span>
       </div>
     </div>
   );
