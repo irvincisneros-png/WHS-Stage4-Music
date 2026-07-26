@@ -7,7 +7,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "difficulty": "medium"
 }/*EDITMODE-END*/;
 
-const SPECIAL_ROUTES = new Set(["pretest", "posttest", "progress"]);
+const SPECIAL_ROUTES = new Set(["pretest", "posttest", "progress", "guitar", "piano"]);
 
 function parseHash(hash, lastYear) {
   const h = (hash || "").replace(/^#\/?/, "");
@@ -203,6 +203,20 @@ function SignedInApp({ student, tweaks, setTweak }) {
           onTakeTest={(kind) => openSpecial(kind + "test")}
         />
       )}
+      {route.special === "guitar" && (
+        <window.GuitarStudio
+          year={year}
+          onBack={backToYear}
+          onSwitch={(instrument) => openSpecial(instrument)}
+        />
+      )}
+      {route.special === "piano" && (
+        <window.PianoStudio
+          year={year}
+          onBack={backToYear}
+          onSwitch={(instrument) => openSpecial(instrument)}
+        />
+      )}
 
       {!route.special && currentTopic && route.sectionIdx != null && (
         <window.SectionPage
@@ -233,7 +247,6 @@ function SignedInApp({ student, tweaks, setTweak }) {
           year={year}
           progress={progress}
           xp={xp} level={level}
-          student={student}
           preTest={preTest}
           postTest={postTest}
           completedCount={completedCount}
@@ -305,9 +318,8 @@ function SignedInApp({ student, tweaks, setTweak }) {
 /* ---------- Year Home ---------- */
 
 function YearHome({ year, progress, preTest, postTest, completedCount, totalTopics,
-                    openTopic, openSpecial, student }) {
+                    openTopic, openSpecial }) {
   const halfDone = completedCount >= Math.ceil(totalTopics / 2);
-  const firstName = student?.firstName || "";
 
   return (
     <>
@@ -315,9 +327,7 @@ function YearHome({ year, progress, preTest, postTest, completedCount, totalTopi
       <div className="row between center wrap gap-3" style={{ marginBottom: 18 }}>
         <div className="col">
           <div className="eyebrow">Welcome back</div>
-          <h2 style={{ fontSize: "clamp(1.6rem, 3vw, 2rem)" }}>
-            {firstName ? "Hey " + firstName : "Welcome"}
-          </h2>
+          <h2 style={{ fontSize: "clamp(1.6rem, 3vw, 2rem)" }}>Welcome</h2>
         </div>
       </div>
 
@@ -359,6 +369,37 @@ function YearHome({ year, progress, preTest, postTest, completedCount, totalTopi
           disabled={!halfDone}
         />
       </div>
+
+      <section className="home-instrument-band" aria-labelledby="instrument-studios-title">
+        <div className="home-instrument-heading">
+          <div>
+            <div className="eyebrow">Open practice · any time</div>
+            <h2 id="instrument-studios-title">Instrument studios</h2>
+          </div>
+          <p>
+            Learn a shape, hear it, then try it on a playable instrument.
+            These studios are available in both Year 7 and Year 8.
+          </p>
+        </div>
+        <div className="home-instrument-grid">
+          <StartTile
+            tone="teal"
+            glyph="guitar"
+            eyebrow="Chords · tab · tuning"
+            title="Guitar Studio"
+            desc="Build beginner chords, check every string, read short tabs, practise tuning and play sample progressions."
+            onClick={() => openSpecial("guitar")}
+          />
+          <StartTile
+            tone="terracotta"
+            glyph="piano"
+            eyebrow="Notes · chords · songs"
+            title="Piano Studio"
+            desc="Map the keys, find notes, build triads and use the full two-octave play-along piano."
+            onClick={() => openSpecial("piano")}
+          />
+        </div>
+      </section>
 
       <YearMap yearKey={year} onOpenTopic={(t) => openTopic(t.id)} progress={progress} />
 

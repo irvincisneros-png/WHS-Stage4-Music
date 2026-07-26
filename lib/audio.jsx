@@ -126,10 +126,11 @@
     });
   }
 
-  // pluck: for guitar chords
-  function playPluck(name, dur = 1.2, velocity = 0.75) {
+  // Pluck voice used by the guitar learning tools. The Hz variant lets the
+  // virtual tuner demonstrate notes that are slightly flat or sharp.
+  function playPluckHz(f, dur = 1.2, velocity = 0.75) {
     if (!ok()) return;
-    const f = hzFromName(name); if (!f) return;
+    if (!Number.isFinite(f) || f <= 0) return;
     ifReady((c) => {
       const t = c.currentTime;
       const osc = c.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = f;
@@ -145,6 +146,11 @@
       g.connect(convolver);
       osc.start(t); osc.stop(t + dur + 0.05);
     });
+  }
+
+  function playPluck(name, dur = 1.2, velocity = 0.75) {
+    const f = hzFromName(name); if (!f) return;
+    playPluckHz(f, dur, velocity);
   }
 
   function playChord(notes, dur = 1.5, velocity = 0.7) {
@@ -279,7 +285,7 @@
   }
 
   window.MusicAudio = {
-    resume, playPiano, playPluck, playChord,
+    resume, playPiano, playPluck, playPluckHz, playChord,
     playKick, playSnare, playHat, playClap, playTom, playCrash,
     ding, click, hzFromName, midiFromName,
   };

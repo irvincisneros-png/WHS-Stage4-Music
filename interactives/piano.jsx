@@ -38,7 +38,7 @@ function annotateBeats(seq) {
 }
 
 /* ---------- Grand staff: treble + bass, beat-positioned ---------- */
-function GrandStave({ rh, lh, chords, totalBeats, rhPos, lhPos }) {
+function GrandStave({ rh, lh, chords, totalBeats, rhPos, lhPos, showNoteNames = true }) {
   const BEAT_PX = 38;
   const PAD_L = 70;
   const PAD_R = 24;
@@ -147,8 +147,9 @@ function GrandStave({ rh, lh, chords, totalBeats, rhPos, lhPos }) {
           <circle cx={x + 10} cy={y} r="1.6" fill={color} />
         ) : null}
         {/* Note letter under treble notes only (bass labels would clutter) */}
-        {hand === "rh" && (
+        {hand === "rh" && showNoteNames && (
           <text x={x} y={160}
+                className="grand-stave-note-name"
                 fontSize="9.5"
                 fontFamily="var(--font-mono)"
                 fill={color}
