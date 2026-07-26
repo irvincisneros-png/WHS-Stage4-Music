@@ -191,6 +191,19 @@ function StudioBackBar({ year, onBack, active, onSwitch }) {
   );
 }
 
+function scrollWithinStudio(event, selector) {
+  event.preventDefault();
+  const target = document.querySelector(selector);
+  if (!target) return;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  target.scrollIntoView({
+    behavior: reduceMotion ? "auto" : "smooth",
+    block: "start",
+  });
+  target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+}
+
 function InstrumentPracticePlan({ instrument, steps }) {
   const storageKey = `instrumentPractice.${instrument}`;
   const [completed, setCompleted] = React.useState(
@@ -259,7 +272,12 @@ function InstrumentPracticePlan({ instrument, steps }) {
                 <strong>{step.title}</strong>
                 <span>{step.detail}</span>
               </div>
-              <a href={step.href}>Open</a>
+              <a
+                href={step.href}
+                onClick={(event) => scrollWithinStudio(event, step.href)}
+              >
+                Open
+              </a>
             </li>
           );
         })}
@@ -930,11 +948,11 @@ function GuitarStudio({ year, onBack, onSwitch }) {
       </header>
 
       <nav className="studio-jump-nav" aria-label="Guitar lesson sections">
-        <a href="#guitar-chords-title">Chord shapes</a>
-        <a href="#guitar-change-title">Change coach</a>
-        <a href="#guitar-progressions-title">Sample chords</a>
-        <a href="#guitar-tab-title">Read tab</a>
-        <a href="#guitar-tuner-title">Tune up</a>
+        <a href="#guitar-chords-title" onClick={(event) => scrollWithinStudio(event, "#guitar-chords-title")}>Chord shapes</a>
+        <a href="#guitar-change-title" onClick={(event) => scrollWithinStudio(event, "#guitar-change-title")}>Change coach</a>
+        <a href="#guitar-progressions-title" onClick={(event) => scrollWithinStudio(event, "#guitar-progressions-title")}>Sample chords</a>
+        <a href="#guitar-tab-title" onClick={(event) => scrollWithinStudio(event, "#guitar-tab-title")}>Read tab</a>
+        <a href="#guitar-tuner-title" onClick={(event) => scrollWithinStudio(event, "#guitar-tuner-title")}>Tune up</a>
       </nav>
 
       <InstrumentPracticePlan
@@ -1330,9 +1348,9 @@ function PianoStudio({ year, onBack, onSwitch }) {
       </header>
 
       <nav className="studio-jump-nav" aria-label="Piano lesson sections">
-        <a href="#piano-warmup-title">Keyboard map</a>
-        <a href="#piano-reading-title">Sight reading</a>
-        <a href="#full-piano-title">Full piano</a>
+        <a href="#piano-warmup-title" onClick={(event) => scrollWithinStudio(event, "#piano-warmup-title")}>Keyboard map</a>
+        <a href="#piano-reading-title" onClick={(event) => scrollWithinStudio(event, "#piano-reading-title")}>Sight reading</a>
+        <a href="#full-piano-title" onClick={(event) => scrollWithinStudio(event, "#full-piano-title")}>Full piano</a>
       </nav>
 
       <InstrumentPracticePlan
