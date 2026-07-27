@@ -946,7 +946,7 @@ function GuitarTabLab() {
   );
 }
 
-function GuitarTunerLab() {
+function GuitarTunerLab({ soundEnabled, onEnableSound, onOpenSettings }) {
   const [tuningId, setTuningId] = React.useState("standard");
   const [customMidis, setCustomMidis] = React.useState([40, 45, 50, 55, 59, 64]);
   const [stringIndex, setStringIndex] = React.useState(0);
@@ -955,7 +955,9 @@ function GuitarTunerLab() {
   const [micState, setMicState] = React.useState("idle");
   const [detectedHz, setDetectedHz] = React.useState(null);
   const [micError, setMicError] = React.useState("");
+  const [audioStatus, setAudioStatus] = React.useState({ kind: "idle", message: "" });
   const micRef = React.useRef(null);
+  const audioStatusTimerRef = React.useRef(null);
 
   const preset = GUITAR_TUNING_PRESETS.find(item => item.id === tuningId);
   const tuning = tuningId === "custom"
@@ -981,7 +983,10 @@ function GuitarTunerLab() {
     setDetectedHz(null);
   }
 
-  React.useEffect(() => () => stopMicrophone(), []);
+  React.useEffect(() => () => {
+    stopMicrophone();
+    if (audioStatusTimerRef.current) clearTimeout(audioStatusTimerRef.current);
+  }, []);
 
   async function startMicrophone() {
     setMicError("");
@@ -1044,22 +1049,60 @@ function GuitarTunerLab() {
     setPracticeOffset(-18);
   }
 
+  function showAudioStatus(kind, message, resetAfter = 0) {
+    if (audioStatusTimerRef.current) clearTimeout(audioStatusTimerRef.current);
+    setAudioStatus({ kind, message });
+    if (resetAfter) {
+      audioStatusTimerRef.current = setTimeout(() => {
+        setAudioStatus({ kind: "idle", message: "" });
+      }, resetAfter);
+    }
+  }
+
+  async function playTone(hz, message, duration = 2, velocity = 0.96) {
+    if (!soundEnabled || window.__SOUND_ON === false) {
+      showAudioStatus("muted", "Sound is switched off for this site.");
+      return false;
+    }
+    if (!window.MusicAudio?.playPluckHz) {
+      showAudioStatus("blocked", "This browser could not start the sound generator.");
+      return false;
+    }
+    showAudioStatus("starting", "Starting audio…");
+    const played = await window.MusicAudio.playPluckHz(hz, duration, velocity);
+    if (!played) {
+      showAudioStatus("blocked", "No sound started. Check the device and browser volume, then try again.");
+      return false;
+    }
+    showAudioStatus("playing", message, Math.max(2200, duration * 1000));
+    return true;
+  }
+
   function playReference() {
-    window.MusicAudio?.resume();
-    window.MusicAudio?.playPluckHz(target.hz, 1.5, 0.72);
+    return playTone(target.hz, `Playing ${target.note} reference at ${target.hz.toFixed(1)} Hz.`);
   }
 
   function playPracticeString() {
-    window.MusicAudio?.resume();
     const hz = target.hz * Math.pow(2, practiceOffset / 1200);
-    window.MusicAudio?.playPluckHz(hz, 1.5, 0.76);
+    return playTone(hz, `Playing the practice string ${direction}.`, 2, 0.98);
   }
 
-  function playAllReferences() {
-    window.MusicAudio?.resume();
-    tuning.forEach((string, index) => {
-      setTimeout(() => window.MusicAudio?.playPluckHz(string.hz, 1.35, 0.7), index * 650);
+  async function playAllReferences() {
+    const firstPlayed = await playTone(
+      tuning[0].hz,
+      `Playing all six strings for ${tuningId === "custom" ? "the custom tuning" : preset.name}.`,
+      1.55,
+      0.92
+    );
+    if (!firstPlayed) return;
+    tuning.slice(1).forEach((string, index) => {
+      setTimeout(() => window.MusicAudio?.playPluckHz(string.hz, 1.55, 0.92), (index + 1) * 700);
     });
+    showAudioStatus(
+      "playing",
+      `Playing all six strings for ${tuningId === "custom" ? "the custom tuning" : preset.name}.`,
+      tuning.length * 700 + 1800
+    );
   }
 
   function newChallenge() {
@@ -1195,7 +1238,7 @@ function GuitarTunerLab() {
             </div>
           )}
           <div className="studio-action-row">
-            <button className="btn btn-teal" onClick={playReference}>Hear reference</button>
+            <button className="btn btn-teal" onClick={playReference}>Hear {target.note} reference</button>
             <button className="btn btn-ghost" onClick={playAllReferences}>Hear all six</button>
             {mode === "practice" && (
               <>
@@ -1204,6 +1247,25 @@ function GuitarTunerLab() {
               </>
             )}
           </div>
+          {audioStatus.kind !== "idle" && (
+            <div className={"tuner-audio-feedback " + audioStatus.kind}
+              role={audioStatus.kind === "blocked" ? "alert" : "status"}
+              aria-live="polite">
+              <span aria-hidden="true">{audioStatus.kind === "playing" ? "♪" : audioStatus.kind === "starting" ? "…" : "!"}</span>
+              <p>{audioStatus.message}</p>
+              {audioStatus.kind === "muted" && (
+                <button className="btn btn-ghost" onClick={() => {
+                  onEnableSound?.();
+                  showAudioStatus("idle", "");
+                }}>
+                  Turn sound on
+                </button>
+              )}
+              {audioStatus.kind === "blocked" && onOpenSettings && (
+                <button className="btn btn-ghost" onClick={onOpenSettings}>Open settings</button>
+              )}
+            </div>
+          )}
           <div className="sr-only" aria-live="polite">
             {mode === "microphone" && detectedHz
               ? `${guitarMidiName(detectedMidi)} detected, ${Math.abs(Math.round(micOffset))} cents ${direction}.`
@@ -1223,7 +1285,7 @@ function GuitarTunerLab() {
   );
 }
 
-function GuitarStudio({ year, onBack, onSwitch }) {
+function GuitarStudio({ year, onBack, onSwitch, soundEnabled, onEnableSound, onOpenSettings }) {
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
@@ -1275,7 +1337,11 @@ function GuitarStudio({ year, onBack, onSwitch }) {
       <GuitarChangeChallenge />
       <GuitarProgressionLab />
       <GuitarTabLab />
-      <GuitarTunerLab />
+      <GuitarTunerLab
+        soundEnabled={soundEnabled}
+        onEnableSound={onEnableSound}
+        onOpenSettings={onOpenSettings}
+      />
     </div>
   );
 }
