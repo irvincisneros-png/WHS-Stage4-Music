@@ -1516,6 +1516,214 @@ p { margin: 0; text-wrap: pretty; }
   margin-top: 18px;
 }
 
+.chasing-cars-lab {
+  scroll-margin-top: 24px;
+}
+.chasing-version-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.chasing-version-switch button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 15px 17px;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-2);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.chasing-version-switch button > span {
+  display: grid;
+  grid-row: 1 / 3;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-soft);
+  font: 800 .8rem var(--font-mono);
+}
+.chasing-version-switch strong {
+  font: 800 1rem var(--font-display);
+}
+.chasing-version-switch small { color: var(--ink-soft); }
+.chasing-version-switch button.active {
+  border-color: var(--terracotta);
+  background: color-mix(in srgb, var(--terracotta) 8%, var(--bg-2));
+}
+.chasing-version-switch button.active > span {
+  background: var(--terracotta);
+  color: #fff;
+}
+.chasing-cars-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr);
+  gap: 22px;
+  align-items: start;
+}
+.chasing-sheet {
+  overflow: hidden;
+  padding: 12px;
+}
+.chasing-sheet > a {
+  display: block;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #ddd;
+}
+.chasing-sheet img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+.chasing-sheet figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 5px 3px;
+}
+.chasing-sheet figcaption > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chasing-sheet figcaption strong { font-family: var(--font-display); }
+.chasing-sheet figcaption span {
+  color: var(--ink-soft);
+  font-size: .78rem;
+}
+.chasing-player { padding: 22px; }
+.chasing-player-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.chasing-player-top h3 {
+  margin-top: 4px;
+  font-size: 1.55rem;
+}
+.chasing-count {
+  display: grid;
+  place-items: center;
+  min-width: 68px;
+  height: 50px;
+  padding: 0 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--ink-soft);
+  font: 800 .72rem var(--font-mono);
+}
+.chasing-count.active {
+  border-color: var(--butter-d);
+  background: var(--butter);
+  color: var(--ink);
+  font-size: 1.4rem;
+}
+.chasing-bars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.chasing-bars button {
+  position: relative;
+  min-height: 82px;
+  padding: 12px 8px 10px;
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chasing-bars button > span {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  color: var(--ink-soft);
+  font: 700 .56rem var(--font-mono);
+}
+.chasing-bars button > strong {
+  display: block;
+  font: 800 1.4rem var(--font-display);
+}
+.chasing-bars button > i {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  margin-top: 8px;
+}
+.chasing-bars button > i b {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.chasing-bars button > i b.active { background: var(--butter); }
+.chasing-bars button.active {
+  border-color: var(--terracotta);
+  background: var(--terracotta);
+  color: #fff;
+  transform: translateY(-2px);
+}
+.chasing-bars button.active > span { color: rgba(255,255,255,.72); }
+.chasing-rhythm {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+  padding: 11px;
+  border-radius: 14px;
+  background: var(--bg);
+}
+.chasing-rhythm span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+}
+.chasing-rhythm strong { font: 800 1.1rem var(--font-display); }
+.chasing-rhythm small { color: var(--ink-soft); font-size: .65rem; }
+.chasing-fingerstyle { grid-template-columns: repeat(3, 1fr); }
+.chasing-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 18px;
+}
+.chasing-controls .studio-tempo { grid-column: 1 / 3; }
+.chasing-tempo-presets {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.chasing-tempo-presets .btn {
+  padding: 9px 11px;
+  font-size: .72rem;
+}
+.chasing-sound-warning {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--butter) 18%, var(--bg));
+  font-weight: 700;
+}
+
 .tab-reading-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(260px, .55fr);
@@ -1976,6 +2184,7 @@ button.tab-cell.active::before { background: var(--terracotta); }
   .chord-lab-layout,
   .tab-reading-grid,
   .tuner-layout,
+  .chasing-cars-grid,
   .change-coach-layout { grid-template-columns: 1fr; }
   .tuner-setup { grid-template-columns: 1fr 1fr; align-items: end; }
   .tuner-mode-switch { grid-column: 1 / -1; justify-self: start; }
@@ -1987,6 +2196,7 @@ button.tab-cell.active::before { background: var(--terracotta); }
   .reading-sprint-controls { grid-template-columns: 1fr 1fr; }
   .reading-sprint-controls .change-coach-toggle { grid-column: 1 / -1; }
   .progression-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chasing-cars-grid { grid-template-columns: 1fr; }
   .piano-chord-picker { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
   .piano-finger-guide { grid-column: 1 / -1; border-left: 0; border-top: 1.5px solid var(--border); }
 }
@@ -2048,6 +2258,16 @@ button.tab-cell.active::before { background: var(--terracotta); }
     border-left: 1.5px solid var(--border) !important;
   }
   .progression-choice { min-height: 84px; }
+  .chasing-version-switch { grid-template-columns: 1fr; }
+  .chasing-sheet { padding: 8px; }
+  .chasing-sheet figcaption { align-items: flex-start; }
+  .chasing-player { padding: 18px 14px; }
+  .chasing-bars { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
+  .chasing-controls { grid-template-columns: 1fr 1fr; }
+  .chasing-controls .studio-tempo,
+  .chasing-tempo-presets { grid-column: 1 / -1; }
+  .chasing-tempo-presets { justify-content: stretch; }
+  .chasing-tempo-presets .btn { flex: 1; justify-content: center; }
   .tuner-console { padding: 22px 14px; }
   .tuner-step-controls .btn,
   .tuner-console .studio-action-row .btn { flex: 1 1 180px; justify-content: center; }

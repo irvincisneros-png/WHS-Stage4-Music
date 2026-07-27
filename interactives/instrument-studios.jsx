@@ -95,6 +95,18 @@ const GUITAR_PROGRESSIONS = [
   },
 ];
 
+const CHASING_CARS_EASY_BARS = ["A", "A", "E", "E", "D", "D", "A", "A"];
+const CHASING_CARS_PROPER_BARS = [
+  { chord: "C", frets: [-1, 3, 2, 0, 1, 0] },
+  { chord: "G/B", frets: [-1, 2, 0, 0, 0, 3] },
+  { chord: "F", frets: [-1, -1, 3, 2, 1, 0] },
+  { chord: "G/B", frets: [-1, 2, 0, 0, 0, 3] },
+  { chord: "C", frets: [-1, 3, 2, 0, 1, 0] },
+  { chord: "F", frets: [-1, -1, 3, 2, 1, 0] },
+  { chord: "C", frets: [-1, 3, 2, 0, 1, 0] },
+  { chord: "C", frets: [-1, 3, 2, 0, 1, 0] },
+];
+
 const GUITAR_TAB_PATTERNS = [
   {
     id: "open-strings",
@@ -274,15 +286,19 @@ function guitarNoteFor(stringIndex, fret) {
 function playGuitarShape(chordKey, direction = "down") {
   const chord = GUITAR_CHORDS[chordKey];
   if (!chord) return;
-  const indexes = chord.frets.map((_, i) => i).filter(i => chord.frets[i] >= 0);
+  playGuitarFrets(chord.frets, direction);
+}
+
+function playGuitarFrets(frets, direction = "down", velocity = 0.72) {
+  const indexes = frets.map((_, i) => i).filter(i => frets[i] >= 0);
   if (direction === "up") indexes.reverse();
   window.MusicAudio?.resume();
   indexes.forEach((stringIndex, order) => {
     setTimeout(() => {
       window.MusicAudio?.playPluck(
-        guitarNoteFor(stringIndex, chord.frets[stringIndex]),
+        guitarNoteFor(stringIndex, frets[stringIndex]),
         1.35,
-        0.72
+        velocity
       );
     }, order * 48);
   });
@@ -849,6 +865,294 @@ function GuitarProgressionLab() {
   );
 }
 
+function ChasingCarsLab({ soundEnabled, onEnableSound }) {
+  const [version, setVersion] = React.useState("easy");
+  const [tempo, setTempo] = React.useState(100);
+  const [countIn, setCountIn] = React.useState(true);
+  const [loop, setLoop] = React.useState(false);
+  const [playing, setPlaying] = React.useState(false);
+  const [activeBar, setActiveBar] = React.useState(-1);
+  const [activeBeat, setActiveBeat] = React.useState(-1);
+  const [count, setCount] = React.useState(0);
+  const timersRef = React.useRef([]);
+  const loopRef = React.useRef(loop);
+  const currentBars = version === "easy"
+    ? CHASING_CARS_EASY_BARS.map(chord => ({ chord, frets: GUITAR_CHORDS[chord].frets }))
+    : CHASING_CARS_PROPER_BARS;
+  const sheet = version === "easy"
+    ? {
+        src: "assets/year8/chasing-cars-easy.jpg",
+        alt: "Teacher-supplied easy Chasing Cars guitar page showing A, E and D chord diagrams, tablature and a handwritten strumming pattern.",
+        label: "Easy version",
+        detail: "A · E · D chord loop with the class strumming pattern",
+      }
+    : {
+        src: "assets/year8/chasing-cars-proper.jpg",
+        alt: "Teacher-supplied proper Chasing Cars guitar arrangement showing standard notation and tablature across two pages.",
+        label: "Proper version",
+        detail: "Fingerstyle practice guide following the visible C, G over B and F movement",
+      };
+
+  React.useEffect(() => {
+    loopRef.current = loop;
+  }, [loop]);
+
+  function clearTimers() {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  }
+
+  function stop() {
+    clearTimers();
+    setPlaying(false);
+    setActiveBar(-1);
+    setActiveBeat(-1);
+    setCount(0);
+  }
+
+  React.useEffect(() => () => clearTimers(), []);
+
+  function queue(callback, delay) {
+    const timer = setTimeout(callback, delay);
+    timersRef.current.push(timer);
+    return timer;
+  }
+
+  function playProperBeat(bar, beatIndex) {
+    const bassString = bar.frets[1] >= 0 ? 1 : 2;
+    const pattern = [bassString, 3, 2, 4, 3, 2, 4, 3];
+    const stringIndex = pattern[beatIndex];
+    const fret = bar.frets[stringIndex];
+    if (fret < 0) return;
+    window.MusicAudio?.playPluck(guitarNoteFor(stringIndex, fret), 1.1, 0.8);
+  }
+
+  function playEasyBeat(bar, beatIndex) {
+    const rhythm = [
+      { beat: 0, direction: "down" },
+      { beat: 1, direction: "down" },
+      { beat: 1.5, direction: "up" },
+      { beat: 2, direction: "down" },
+      { beat: 3, direction: "down" },
+    ];
+    playGuitarFrets(bar.frets, rhythm[beatIndex].direction, 0.76);
+  }
+
+  function schedulePass(delayBefore = 0) {
+    const beatMs = 60000 / tempo;
+    const barMs = beatMs * 4;
+    const passMs = currentBars.length * barMs;
+
+    currentBars.forEach((bar, barIndex) => {
+      if (version === "easy") {
+        const beats = [0, 1, 1.5, 2, 3];
+        beats.forEach((beat, beatIndex) => {
+          queue(() => {
+            setActiveBar(barIndex);
+            setActiveBeat(Math.floor(beat));
+            playEasyBeat(bar, beatIndex);
+          }, delayBefore + barIndex * barMs + beat * beatMs);
+        });
+      } else {
+        for (let beatIndex = 0; beatIndex < 8; beatIndex++) {
+          queue(() => {
+            setActiveBar(barIndex);
+            setActiveBeat(Math.floor(beatIndex / 2));
+            playProperBeat(bar, beatIndex);
+          }, delayBefore + barIndex * barMs + beatIndex * beatMs / 2);
+        }
+      }
+    });
+
+    queue(() => {
+      if (loopRef.current) {
+        schedulePass(0);
+      } else {
+        setPlaying(false);
+        setActiveBar(-1);
+        setActiveBeat(-1);
+      }
+    }, delayBefore + passMs);
+  }
+
+  function play() {
+    stop();
+    if (!soundEnabled || window.__SOUND_ON === false) return;
+    window.MusicAudio?.resume();
+    setPlaying(true);
+    const beatMs = 60000 / tempo;
+    const countDelay = countIn ? beatMs * 4 : 0;
+    if (countIn) {
+      for (let beat = 1; beat <= 4; beat++) {
+        queue(() => {
+          setCount(beat);
+          window.MusicAudio?.click(beat === 1);
+        }, (beat - 1) * beatMs);
+      }
+      queue(() => setCount(0), countDelay);
+    }
+    schedulePass(countDelay);
+  }
+
+  function changeVersion(nextVersion) {
+    stop();
+    setVersion(nextVersion);
+  }
+
+  function previewBar(index) {
+    clearTimers();
+    setPlaying(false);
+    setCount(0);
+    setActiveBeat(-1);
+    const bar = currentBars[index];
+    setActiveBar(index);
+    if (version === "easy") {
+      playGuitarFrets(bar.frets, "down", 0.8);
+    } else {
+      for (let note = 0; note < 8; note++) {
+        queue(() => {
+          setActiveBeat(Math.floor(note / 2));
+          playProperBeat(bar, note);
+        }, note * 120);
+      }
+      queue(() => setActiveBeat(-1), 1000);
+    }
+  }
+
+  return (
+    <section className="studio-section chasing-cars-lab" aria-labelledby="chasing-cars-title">
+      <div className="studio-section-heading">
+        <div>
+          <div className="eyebrow">Year 8 class song · guitar</div>
+          <h2 id="chasing-cars-title">Chasing Cars practice room</h2>
+          <p>
+            Start with the easy chord version, then move to the proper notation and tab.
+            The playback is a practice guide; follow the supplied sheet for the exact arrangement.
+          </p>
+        </div>
+        <Chip variant="teal">Class tempo · 100 bpm</Chip>
+      </div>
+
+      <div className="chasing-version-switch" role="group" aria-label="Choose Chasing Cars version">
+        <button className={version === "easy" ? "active" : ""}
+          aria-pressed={version === "easy"} onClick={() => changeVersion("easy")}>
+          <span>1</span>
+          <strong>Easy version</strong>
+          <small>A · E · D and strumming</small>
+        </button>
+        <button className={version === "proper" ? "active" : ""}
+          aria-pressed={version === "proper"} onClick={() => changeVersion("proper")}>
+          <span>2</span>
+          <strong>Proper version</strong>
+          <small>Notation · tab · fingerstyle</small>
+        </button>
+      </div>
+
+      <div className="chasing-cars-grid">
+        <figure className="chasing-sheet chunk paper">
+          <a href={sheet.src} target="_blank" rel="noreferrer" aria-label={`Open ${sheet.label} sheet full size`}>
+            <img src={sheet.src} alt={sheet.alt} loading="lazy" />
+          </a>
+          <figcaption>
+            <div>
+              <strong>{sheet.label}</strong>
+              <span>{sheet.detail}</span>
+            </div>
+            <a className="text-button" href={sheet.src} target="_blank" rel="noreferrer">Open full size ↗</a>
+          </figcaption>
+        </figure>
+
+        <div className="chasing-player chunk paper">
+          <div className="chasing-player-top">
+            <div>
+              <span className="eyebrow">{version === "easy" ? "Strumming loop" : "Fingerstyle guide"}</span>
+              <h3>{sheet.label}</h3>
+            </div>
+            <div className={"chasing-count " + (count ? "active" : "")}
+              aria-live="polite"
+              aria-label={count
+                ? `Count in ${count}`
+                : playing && activeBar >= 0 ? `Playing bar ${activeBar + 1}` : "Ready"}>
+              {count || (playing ? activeBar + 1 : "READY")}
+            </div>
+          </div>
+
+          <div className="chasing-bars" aria-label={`${sheet.label} practice sequence`}>
+            {currentBars.map((bar, index) => (
+              <button key={index}
+                className={activeBar === index ? "active" : ""}
+                onClick={() => previewBar(index)}
+                aria-label={`Bar ${index + 1}, ${bar.chord}`}
+                aria-pressed={activeBar === index}>
+                <span>{index + 1}</span>
+                <strong>{bar.chord}</strong>
+                <i aria-hidden="true">
+                  {[0, 1, 2, 3].map(beat => (
+                    <b className={activeBar === index && activeBeat === beat ? "active" : ""} key={beat} />
+                  ))}
+                </i>
+              </button>
+            ))}
+          </div>
+
+          {version === "easy" ? (
+            <div className="chasing-rhythm" aria-label="Strumming pattern: down, down up, down, down">
+              <span><strong>↓</strong><small>Down</small></span>
+              <span><strong>↓ ↑</strong><small>Down–up</small></span>
+              <span><strong>↓</strong><small>Down</small></span>
+              <span><strong>↓</strong><small>Down</small></span>
+            </div>
+          ) : (
+            <div className="chasing-rhythm chasing-fingerstyle">
+              <span><strong>Bass</strong><small>Beat 1</small></span>
+              <span><strong>3 · 2 · 1</strong><small>Even quavers</small></span>
+              <span><strong>Let ring</strong><small>Relax the hand</small></span>
+            </div>
+          )}
+
+          <div className="chasing-controls">
+            <label className="studio-tempo">
+              Tempo
+              <input type="range" min="60" max="110" step="1" value={tempo}
+                onChange={(event) => setTempo(parseInt(event.target.value, 10))} />
+              <strong>{tempo} bpm</strong>
+            </label>
+            <div className="chasing-tempo-presets" aria-label="Tempo presets">
+              <button className="btn btn-ghost" onClick={() => setTempo(70)}>Slow · 70</button>
+              <button className="btn btn-ghost" onClick={() => setTempo(100)}>Class · 100</button>
+            </div>
+            <label className="change-coach-toggle">
+              <input type="checkbox" checked={countIn}
+                onChange={(event) => setCountIn(event.target.checked)} />
+              Count in
+            </label>
+            <label className="change-coach-toggle">
+              <input type="checkbox" checked={loop}
+                onChange={(event) => setLoop(event.target.checked)} />
+              Loop
+            </label>
+          </div>
+
+          {!soundEnabled && (
+            <div className="chasing-sound-warning" role="status">
+              <span>Sound is off.</span>
+              <button className="text-button" onClick={onEnableSound}>Turn sound on</button>
+            </div>
+          )}
+
+          <div className="studio-action-row">
+            <button className="btn btn-primary" onClick={play} disabled={playing || !soundEnabled}>
+              {playing ? "Playing…" : countIn ? "Count in and play" : "Play practice guide"}
+            </button>
+            <button className="btn btn-ghost" onClick={stop} disabled={!playing && activeBar < 0}>Stop</button>
+            <span className="studio-help">Select any bar to hear it on its own.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function GuitarTabLab() {
   const [patternId, setPatternId] = React.useState(GUITAR_TAB_PATTERNS[0].id);
   const [activeEvent, setActiveEvent] = React.useState(-1);
@@ -1319,6 +1623,9 @@ function GuitarStudio({ year, onBack, onSwitch, soundEnabled, onEnableSound, onO
         <a href="#guitar-chords-title" onClick={(event) => scrollWithinStudio(event, "#guitar-chords-title")}>Chord shapes</a>
         <a href="#guitar-change-title" onClick={(event) => scrollWithinStudio(event, "#guitar-change-title")}>Change coach</a>
         <a href="#guitar-progressions-title" onClick={(event) => scrollWithinStudio(event, "#guitar-progressions-title")}>Sample chords</a>
+        {year === "year8" && (
+          <a href="#chasing-cars-title" onClick={(event) => scrollWithinStudio(event, "#chasing-cars-title")}>Chasing Cars</a>
+        )}
         <a href="#guitar-tab-title" onClick={(event) => scrollWithinStudio(event, "#guitar-tab-title")}>Read tab</a>
         <a href="#guitar-tuner-title" onClick={(event) => scrollWithinStudio(event, "#guitar-tuner-title")}>Tune up</a>
       </nav>
@@ -1329,6 +1636,9 @@ function GuitarStudio({ year, onBack, onSwitch, soundEnabled, onEnableSound, onO
           { id: "tune", title: "Tune up", detail: "Choose a tuning and match all six strings.", href: "#guitar-tuner-title" },
           { id: "shape", title: "Check one chord", detail: "Play every string slowly and cleanly.", href: "#guitar-chords-title" },
           { id: "change", title: "Change two chords", detail: "Complete one timed self-check.", href: "#guitar-change-title" },
+          ...(year === "year8" ? [
+            { id: "class-song", title: "Practise Chasing Cars", detail: "Start easy, then try the proper version.", href: "#chasing-cars-title" },
+          ] : []),
           { id: "tab", title: "Read one tab", detail: "Keep all notes even from left to right.", href: "#guitar-tab-title" },
           { id: "song", title: "Play a progression", detail: "Stay with the pulse for one complete loop.", href: "#guitar-progressions-title" },
         ]}
@@ -1336,6 +1646,9 @@ function GuitarStudio({ year, onBack, onSwitch, soundEnabled, onEnableSound, onO
       <GuitarChordLab />
       <GuitarChangeChallenge />
       <GuitarProgressionLab />
+      {year === "year8" && (
+        <ChasingCarsLab soundEnabled={soundEnabled} onEnableSound={onEnableSound} />
+      )}
       <GuitarTabLab />
       <GuitarTunerLab
         soundEnabled={soundEnabled}
