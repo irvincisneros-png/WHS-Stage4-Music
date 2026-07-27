@@ -1766,6 +1766,45 @@ button.tab-cell.active::before { background: var(--terracotta); }
   color: #b42318;
   font-weight: 700;
 }
+.tuner-audio-feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--teal) 10%, var(--bg-2));
+  color: var(--ink);
+}
+.tuner-audio-feedback > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--teal);
+  color: #fff;
+  font-weight: 800;
+}
+.tuner-audio-feedback p {
+  flex: 1;
+  margin: 0;
+  font-size: .88rem;
+  font-weight: 700;
+}
+.tuner-audio-feedback .btn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+.tuner-audio-feedback.muted,
+.tuner-audio-feedback.blocked {
+  background: color-mix(in srgb, var(--butter) 18%, var(--bg-2));
+}
+.tuner-audio-feedback.muted > span,
+.tuner-audio-feedback.blocked > span {
+  background: var(--butter-d);
+}
 .tuner-safety-note {
   display: flex;
   gap: 14px;

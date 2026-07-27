@@ -216,6 +216,9 @@ function SignedInApp({ student, tweaks, setTweak }) {
           year={year}
           onBack={backToYear}
           onSwitch={(instrument) => openSpecial(instrument)}
+          soundEnabled={tweaks.sound}
+          onEnableSound={() => setTweak("sound", true)}
+          onOpenSettings={openTweaks}
         />
       )}
       {route.special === "piano" && (
@@ -290,7 +293,7 @@ function SignedInApp({ student, tweaks, setTweak }) {
         </window.TweakSection>
         <window.TweakSection label="Audio">
           <window.TweakToggle
-            label="Sound effects"
+            label="Instrument and game sounds"
             value={tweaks.sound}
             onChange={(v) => setTweak("sound", v)}
           />

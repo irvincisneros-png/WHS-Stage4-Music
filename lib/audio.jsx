@@ -45,14 +45,30 @@
   // oscillator events don't get queued against a frozen clock and dropped.
   function ifReady(fn) {
     const c = resume();
-    if (!c) return;
-    if (c.state === "running") { fn(c); return; }
+    if (!c) return Promise.resolve(false);
+    if (c.state === "running") {
+      fn(c);
+      return Promise.resolve(true);
+    }
     const p = c.resume();
     if (p && typeof p.then === "function") {
-      p.then(() => fn(c)).catch(() => {});
+      return p.then(() => {
+        if (c.state !== "running") return false;
+        fn(c);
+        return true;
+      }).catch(() => false);
     } else {
       // very old browsers: best-effort
-      setTimeout(() => fn(c), 30);
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          if (c.state !== "running") {
+            resolve(false);
+            return;
+          }
+          fn(c);
+          resolve(true);
+        }, 30);
+      });
     }
   }
 
@@ -129,9 +145,9 @@
   // Pluck voice used by the guitar learning tools. The Hz variant lets the
   // virtual tuner demonstrate notes that are slightly flat or sharp.
   function playPluckHz(f, dur = 1.2, velocity = 0.75) {
-    if (!ok()) return;
-    if (!Number.isFinite(f) || f <= 0) return;
-    ifReady((c) => {
+    if (!ok()) return Promise.resolve(false);
+    if (!Number.isFinite(f) || f <= 0) return Promise.resolve(false);
+    return ifReady((c) => {
       const t = c.currentTime;
       const osc = c.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = f;
       const filter = c.createBiquadFilter(); filter.type = "lowpass";
@@ -150,7 +166,7 @@
 
   function playPluck(name, dur = 1.2, velocity = 0.75) {
     const f = hzFromName(name); if (!f) return;
-    playPluckHz(f, dur, velocity);
+    return playPluckHz(f, dur, velocity);
   }
 
   function playChord(notes, dur = 1.5, velocity = 0.7) {
