@@ -127,18 +127,144 @@ const GUITAR_TAB_PATTERNS = [
   },
 ];
 
-const GUITAR_TUNING = [
-  { string: 6, label: "Low E", note: "E2", hz: 82.41 },
-  { string: 5, label: "A", note: "A2", hz: 110.00 },
-  { string: 4, label: "D", note: "D3", hz: 146.83 },
-  { string: 3, label: "G", note: "G3", hz: 196.00 },
-  { string: 2, label: "B", note: "B3", hz: 246.94 },
-  { string: 1, label: "High E", note: "E4", hz: 329.63 },
-];
-
 function guitarMidiName(midi) {
   const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   return names[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function guitarMidiHz(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function makeGuitarTuning(midis, labels) {
+  return midis.map((midi, index) => ({
+    string: 6 - index,
+    label: labels?.[index] || (index === 0 ? "Lowest string" : index === 5 ? "Highest string" : `String ${6 - index}`),
+    note: labels?.[index] || guitarMidiName(midi),
+    midi,
+    hz: guitarMidiHz(midi),
+  }));
+}
+
+const GUITAR_TUNING_PRESETS = [
+  {
+    id: "standard",
+    name: "Standard",
+    notes: "E A D G B E",
+    help: "The usual tuning for beginner chords, scales and most class songs.",
+    strings: makeGuitarTuning([40, 45, 50, 55, 59, 64], ["E2", "A2", "D3", "G3", "B3", "E4"]),
+  },
+  {
+    id: "drop-d",
+    name: "Drop D",
+    notes: "D A D G B E",
+    help: "Lower only string 6 from E to D for power chords and a deeper bass.",
+    strings: makeGuitarTuning([38, 45, 50, 55, 59, 64], ["D2", "A2", "D3", "G3", "B3", "E4"]),
+  },
+  {
+    id: "half-step",
+    name: "Half-step down",
+    notes: "E♭ A♭ D♭ G♭ B♭ E♭",
+    help: "Every string is one semitone lower. Chord shapes stay the same.",
+    strings: makeGuitarTuning([39, 44, 49, 54, 58, 63], ["E♭2", "A♭2", "D♭3", "G♭3", "B♭3", "E♭4"]),
+  },
+  {
+    id: "d-standard",
+    name: "D Standard",
+    notes: "D G C F A D",
+    help: "Every string is one whole tone lower for a darker, looser sound.",
+    strings: makeGuitarTuning([38, 43, 48, 53, 57, 62], ["D2", "G2", "C3", "F3", "A3", "D4"]),
+  },
+  {
+    id: "drop-c",
+    name: "Drop C",
+    notes: "C G C F A D",
+    help: "D Standard with string 6 lowered again to C. Use suitable string tension.",
+    strings: makeGuitarTuning([36, 43, 48, 53, 57, 62], ["C2", "G2", "C3", "F3", "A3", "D4"]),
+  },
+  {
+    id: "dadgad",
+    name: "DADGAD",
+    notes: "D A D G A D",
+    help: "An open, suspended tuning used in folk, acoustic and Celtic styles.",
+    strings: makeGuitarTuning([38, 45, 50, 55, 57, 62], ["D2", "A2", "D3", "G3", "A3", "D4"]),
+  },
+  {
+    id: "open-g",
+    name: "Open G",
+    notes: "D G D G B D",
+    help: "The open strings form a G major chord.",
+    strings: makeGuitarTuning([38, 43, 50, 55, 59, 62], ["D2", "G2", "D3", "G3", "B3", "D4"]),
+  },
+  {
+    id: "open-d",
+    name: "Open D",
+    notes: "D A D F# A D",
+    help: "The open strings form a D major chord.",
+    strings: makeGuitarTuning([38, 45, 50, 54, 57, 62], ["D2", "A2", "D3", "F#3", "A3", "D4"]),
+  },
+  {
+    id: "open-e",
+    name: "Open E",
+    notes: "E B E G# B E",
+    help: "The open strings form an E major chord. Tune up carefully to avoid excess tension.",
+    strings: makeGuitarTuning([40, 47, 52, 56, 59, 64], ["E2", "B2", "E3", "G#3", "B3", "E4"]),
+  },
+];
+
+const GUITAR_CUSTOM_NOTES = Array.from({ length: 34 }, (_, index) => {
+  const midi = 35 + index;
+  return { midi, note: guitarMidiName(midi), hz: guitarMidiHz(midi) };
+});
+
+function detectGuitarPitch(buffer, sampleRate) {
+  let rms = 0;
+  for (let i = 0; i < buffer.length; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / buffer.length);
+  if (rms < 0.012) return null;
+
+  const minTau = Math.floor(sampleRate / 420);
+  const maxTau = Math.min(Math.floor(sampleRate / 58), Math.floor(buffer.length / 2));
+  const difference = new Float32Array(maxTau + 1);
+  const comparisonLength = buffer.length - maxTau;
+
+  for (let tau = 1; tau <= maxTau; tau++) {
+    let sum = 0;
+    for (let i = 0; i < comparisonLength; i++) {
+      const delta = buffer[i] - buffer[i + tau];
+      sum += delta * delta;
+    }
+    difference[tau] = sum;
+  }
+
+  let runningSum = 0;
+  for (let tau = 1; tau <= maxTau; tau++) {
+    runningSum += difference[tau];
+    difference[tau] = runningSum ? difference[tau] * tau / runningSum : 1;
+  }
+
+  let bestTau = -1;
+  let bestValue = 1;
+  for (let tau = minTau; tau <= maxTau; tau++) {
+    if (difference[tau] < bestValue) {
+      bestValue = difference[tau];
+      bestTau = tau;
+    }
+    if (difference[tau] < 0.14) {
+      while (tau + 1 <= maxTau && difference[tau + 1] < difference[tau]) tau++;
+      bestTau = tau;
+      bestValue = difference[tau];
+      break;
+    }
+  }
+
+  if (bestTau < 0 || bestValue > 0.38) return null;
+  const left = difference[Math.max(1, bestTau - 1)];
+  const centre = difference[bestTau];
+  const right = difference[Math.min(maxTau, bestTau + 1)];
+  const denominator = 2 * (2 * centre - right - left);
+  const refinedTau = denominator ? bestTau + (right - left) / denominator : bestTau;
+  return sampleRate / refinedTau;
 }
 
 function guitarNoteFor(stringIndex, fret) {
@@ -821,11 +947,102 @@ function GuitarTabLab() {
 }
 
 function GuitarTunerLab() {
+  const [tuningId, setTuningId] = React.useState("standard");
+  const [customMidis, setCustomMidis] = React.useState([40, 45, 50, 55, 59, 64]);
   const [stringIndex, setStringIndex] = React.useState(0);
-  const [offset, setOffset] = React.useState(-18);
-  const target = GUITAR_TUNING[stringIndex];
-  const inTune = Math.abs(offset) <= 3;
-  const direction = offset < -3 ? "flat" : offset > 3 ? "sharp" : "in tune";
+  const [practiceOffset, setPracticeOffset] = React.useState(-18);
+  const [mode, setMode] = React.useState("microphone");
+  const [micState, setMicState] = React.useState("idle");
+  const [detectedHz, setDetectedHz] = React.useState(null);
+  const [micError, setMicError] = React.useState("");
+  const micRef = React.useRef(null);
+
+  const preset = GUITAR_TUNING_PRESETS.find(item => item.id === tuningId);
+  const tuning = tuningId === "custom"
+    ? makeGuitarTuning(customMidis)
+    : preset.strings;
+  const target = tuning[stringIndex];
+  const micOffset = detectedHz ? 1200 * Math.log2(detectedHz / target.hz) : null;
+  const offset = mode === "microphone" ? micOffset : practiceOffset;
+  const inTune = offset != null && Math.abs(offset) <= 3;
+  const direction = offset == null ? "waiting" : offset < -3 ? "flat" : offset > 3 ? "sharp" : "in tune";
+  const detectedMidi = detectedHz ? Math.round(69 + 12 * Math.log2(detectedHz / 440)) : null;
+
+  function stopMicrophone() {
+    const resources = micRef.current;
+    if (resources) {
+      resources.stopped = true;
+      if (resources.timer) clearTimeout(resources.timer);
+      resources.stream?.getTracks().forEach(track => track.stop());
+      resources.context?.close();
+      micRef.current = null;
+    }
+    setMicState("idle");
+    setDetectedHz(null);
+  }
+
+  React.useEffect(() => () => stopMicrophone(), []);
+
+  async function startMicrophone() {
+    setMicError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicError("Microphone tuning is not supported in this browser. Use the reference mode instead.");
+      return;
+    }
+    setMicState("requesting");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: false,
+        },
+      });
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const context = new AudioContextClass();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 8192;
+      analyser.smoothingTimeConstant = 0;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const buffer = new Float32Array(analyser.fftSize);
+      const resources = { stream, context, analyser, buffer, timer: null, stopped: false };
+      micRef.current = resources;
+      setMicState("listening");
+
+      const analyse = () => {
+        if (resources.stopped) return;
+        analyser.getFloatTimeDomainData(buffer);
+        const pitch = detectGuitarPitch(buffer, context.sampleRate);
+        setDetectedHz(pitch);
+        resources.timer = setTimeout(analyse, 90);
+      };
+      analyse();
+    } catch (error) {
+      stopMicrophone();
+      setMicError(error?.name === "NotAllowedError"
+        ? "Microphone permission was blocked. Allow microphone access, then try again."
+        : "The microphone could not start. Use the reference mode or check your browser input.");
+    }
+  }
+
+  function changeMode(nextMode) {
+    if (nextMode !== "microphone") stopMicrophone();
+    setMode(nextMode);
+    setMicError("");
+  }
+
+  function changeTuning(nextId) {
+    stopMicrophone();
+    setTuningId(nextId);
+    setStringIndex(0);
+    setPracticeOffset(-18);
+  }
+
+  function changeCustomString(index, midi) {
+    setCustomMidis(values => values.map((value, itemIndex) => itemIndex === index ? midi : value));
+    setPracticeOffset(-18);
+  }
 
   function playReference() {
     window.MusicAudio?.resume();
@@ -834,85 +1051,174 @@ function GuitarTunerLab() {
 
   function playPracticeString() {
     window.MusicAudio?.resume();
-    const hz = target.hz * Math.pow(2, offset / 1200);
+    const hz = target.hz * Math.pow(2, practiceOffset / 1200);
     window.MusicAudio?.playPluckHz(hz, 1.5, 0.76);
   }
 
+  function playAllReferences() {
+    window.MusicAudio?.resume();
+    tuning.forEach((string, index) => {
+      setTimeout(() => window.MusicAudio?.playPluckHz(string.hz, 1.35, 0.7), index * 650);
+    });
+  }
+
   function newChallenge() {
-    const nextString = Math.floor(Math.random() * GUITAR_TUNING.length);
+    const nextString = Math.floor(Math.random() * tuning.length);
     const amount = 12 + Math.floor(Math.random() * 19);
     setStringIndex(nextString);
-    setOffset(Math.random() > 0.5 ? amount : -amount);
+    setPracticeOffset(Math.random() > 0.5 ? amount : -amount);
   }
 
   return (
     <section className="studio-section studio-section-tinted" aria-labelledby="guitar-tuner-title">
       <div className="studio-section-heading">
         <div>
-          <div className="eyebrow">Lesson 5 · standard tuning</div>
-          <h2 id="guitar-tuner-title">Match low E, A, D, G, B, high E</h2>
-          <p>Compare the practice string with the reference, then adjust the virtual tuning peg.</p>
+          <div className="eyebrow">Lesson 5 · guitar tuner</div>
+          <h2 id="guitar-tuner-title">Tune standard, Drop D, open tunings and more</h2>
+          <p>
+            Select a target tuning. Use your microphone for a real guitar, or practise matching
+            pitches by ear with the reference trainer.
+          </p>
         </div>
         <Chip variant={inTune ? "teal" : "butter"}>
           {target.note} · {direction}
         </Chip>
       </div>
 
+      <div className="tuner-setup chunk paper">
+        <label className="studio-select tuner-preset-select">
+          Tuning
+          <select value={tuningId} onChange={(event) => changeTuning(event.target.value)}>
+            {GUITAR_TUNING_PRESETS.map(item => (
+              <option key={item.id} value={item.id}>{item.name} · {item.notes}</option>
+            ))}
+            <option value="custom">Custom tuning</option>
+          </select>
+        </label>
+        <div className="tuner-preset-copy">
+          <strong>{tuningId === "custom" ? "Custom tuning" : preset.name}</strong>
+          <span>{tuningId === "custom"
+            ? "Choose a target note for each string below."
+            : preset.help}</span>
+        </div>
+        <div className="tuner-mode-switch" role="group" aria-label="Tuner mode">
+          <button className={mode === "microphone" ? "active" : ""}
+            aria-pressed={mode === "microphone"} onClick={() => changeMode("microphone")}>
+            Microphone tuner
+          </button>
+          <button className={mode === "practice" ? "active" : ""}
+            aria-pressed={mode === "practice"} onClick={() => changeMode("practice")}>
+            Ear training
+          </button>
+        </div>
+      </div>
+
       <div className="tuner-layout">
-        <div className="tuning-string-list" role="list" aria-label="Standard guitar strings">
-          {GUITAR_TUNING.map((string, index) => (
-            <button
-              key={string.string}
-              className={"tuning-string " + (index === stringIndex ? "active" : "")}
-              onClick={() => { setStringIndex(index); setOffset(-18); }}
-              aria-pressed={index === stringIndex}
-            >
-              <span>STRING {string.string}</span>
-              <strong>{string.note}</strong>
-              <small>{string.label}</small>
-            </button>
+        <div className="tuning-string-list" role="list" aria-label={`${tuningId === "custom" ? "Custom" : preset.name} guitar strings`}>
+          {tuning.map((string, index) => (
+            <div className={"tuning-string-wrap " + (index === stringIndex ? "active" : "")} key={string.string}>
+              <button
+                className="tuning-string"
+                onClick={() => { setStringIndex(index); setPracticeOffset(-18); setDetectedHz(null); }}
+                aria-pressed={index === stringIndex}
+              >
+                <span>STRING {string.string}</span>
+                <strong>{string.note}</strong>
+                <small>{index === 0 ? "Lowest" : index === 5 ? "Highest" : "Target note"}</small>
+              </button>
+              {tuningId === "custom" && (
+                <label>
+                  <span className="sr-only">Target note for string {string.string}</span>
+                  <select value={customMidis[index]}
+                    onChange={(event) => changeCustomString(index, parseInt(event.target.value, 10))}>
+                    {GUITAR_CUSTOM_NOTES.map(note => (
+                      <option key={note.midi} value={note.midi}>{note.note}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
           ))}
         </div>
 
         <div className="chunk paper tuner-console">
           <div className="tuner-readout">
-            <span className="eyebrow">Practice string</span>
+            <span className="eyebrow">{mode === "microphone" ? `String ${target.string} target` : "Practice string"}</span>
             <strong>{target.note}</strong>
             <span className={"tuner-status " + (inTune ? "good" : "")}>
-              {inTune ? "Ready to play" : `${Math.abs(offset)} cents ${direction}`}
+              {mode === "microphone"
+                ? detectedHz
+                  ? `${guitarMidiName(detectedMidi)} detected · ${detectedHz.toFixed(1)} Hz · ${Math.abs(Math.round(micOffset))} cents ${direction}`
+                  : micState === "listening" ? "Play the selected string"
+                    : micState === "requesting" ? "Waiting for microphone permission" : "Microphone is off"
+                : inTune ? "Ready to play" : `${Math.abs(practiceOffset)} cents ${direction}`}
             </span>
           </div>
-          <div className="tuner-meter" aria-label={`Tuning offset ${offset} cents`}>
+          <div className="tuner-meter" aria-label={offset == null ? "Waiting for a pitch" : `Tuning offset ${Math.round(offset)} cents`}>
             <span>FLAT</span>
             <div className="tuner-track">
               <i className="tuner-centre" />
               <i className={"tuner-needle " + (inTune ? "good" : "")} style={{
-                left: `${Math.max(0, Math.min(100, offset + 50))}%`,
+                left: `${offset == null ? 50 : Math.max(0, Math.min(100, offset + 50))}%`,
+                opacity: offset == null ? .22 : 1,
               }} />
             </div>
             <span>SHARP</span>
           </div>
-          <input
-            className="tuner-slider"
-            type="range" min="-50" max="50" step="1" value={offset}
-            onChange={(event) => setOffset(parseInt(event.target.value, 10))}
-            aria-label="Virtual tuning peg"
-          />
-          <div className="tuner-step-controls">
-            <button className="btn btn-ghost" onClick={() => setOffset(value => Math.max(-50, value - 2))}>
-              Lower pitch
-            </button>
-            <button className="btn btn-ghost" onClick={() => setOffset(value => Math.min(50, value + 2))}>
-              Raise pitch
-            </button>
-          </div>
+          {mode === "practice" ? (
+            <>
+              <input
+                className="tuner-slider"
+                type="range" min="-50" max="50" step="1" value={practiceOffset}
+                onChange={(event) => setPracticeOffset(parseInt(event.target.value, 10))}
+                aria-label="Virtual tuning peg"
+              />
+              <div className="tuner-step-controls">
+                <button className="btn btn-ghost" onClick={() => setPracticeOffset(value => Math.max(-50, value - 2))}>
+                  Lower pitch
+                </button>
+                <button className="btn btn-ghost" onClick={() => setPracticeOffset(value => Math.min(50, value + 2))}>
+                  Raise pitch
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="microphone-tuner-controls">
+              <button className={"btn " + (micState === "listening" ? "btn-ghost" : "btn-primary")}
+                onClick={micState === "listening" ? stopMicrophone : startMicrophone}
+                disabled={micState === "requesting"}>
+                {micState === "listening" ? "Stop microphone"
+                  : micState === "requesting" ? "Waiting for permission…" : "Start microphone"}
+              </button>
+              <p>Choose one string, pluck it clearly, then adjust the real tuning peg until the needle is centred.</p>
+              {micError && <p className="tuner-error" role="alert">{micError}</p>}
+            </div>
+          )}
           <div className="studio-action-row">
             <button className="btn btn-teal" onClick={playReference}>Hear reference</button>
-            <button className="btn btn-primary" onClick={playPracticeString}>Hear practice string</button>
-            <button className="btn btn-ghost" onClick={newChallenge}>New challenge</button>
+            <button className="btn btn-ghost" onClick={playAllReferences}>Hear all six</button>
+            {mode === "practice" && (
+              <>
+                <button className="btn btn-primary" onClick={playPracticeString}>Hear practice string</button>
+                <button className="btn btn-ghost" onClick={newChallenge}>New challenge</button>
+              </>
+            )}
+          </div>
+          <div className="sr-only" aria-live="polite">
+            {mode === "microphone" && detectedHz
+              ? `${guitarMidiName(detectedMidi)} detected, ${Math.abs(Math.round(micOffset))} cents ${direction}.`
+              : ""}
           </div>
         </div>
       </div>
+      <aside className="tuner-safety-note">
+        <strong>Retuning safely</strong>
+        <span>
+          Tune in small steps and stop if a string feels unusually tight. Lower tunings may need
+          heavier strings and a setup. This tuner listens only after you grant microphone access;
+          audio is analysed in your browser and is not uploaded.
+        </span>
+      </aside>
     </section>
   );
 }
@@ -930,7 +1236,7 @@ function GuitarStudio({ year, onBack, onSwitch }) {
           <div className="eyebrow">Instrument studio · guitar</div>
           <h1>Learn the shape. Hear the sound. Make the change.</h1>
           <p>
-            Start with clean beginner chords, read short tab patterns, practise standard tuning,
+            Start with clean beginner chords, read short tab patterns, tune standard or alternate tunings,
             then put the shapes into real progressions.
           </p>
           <div className="studio-hero-chips">
@@ -958,7 +1264,7 @@ function GuitarStudio({ year, onBack, onSwitch }) {
       <InstrumentPracticePlan
         instrument="guitar"
         steps={[
-          { id: "tune", title: "Tune up", detail: "Match all six standard strings.", href: "#guitar-tuner-title" },
+          { id: "tune", title: "Tune up", detail: "Choose a tuning and match all six strings.", href: "#guitar-tuner-title" },
           { id: "shape", title: "Check one chord", detail: "Play every string slowly and cleanly.", href: "#guitar-chords-title" },
           { id: "change", title: "Change two chords", detail: "Complete one timed self-check.", href: "#guitar-change-title" },
           { id: "tab", title: "Read one tab", detail: "Keep all notes even from left to right.", href: "#guitar-tab-title" },

@@ -1593,10 +1593,65 @@ button.tab-cell.active::before { background: var(--terracotta); }
   grid-template-columns: minmax(150px, .42fr) minmax(440px, 1.58fr);
   gap: 20px;
 }
+.tuner-setup {
+  display: grid;
+  grid-template-columns: minmax(240px, .7fr) minmax(260px, 1fr) auto;
+  gap: 20px;
+  align-items: end;
+  margin-bottom: 20px;
+  padding: 20px;
+}
+.tuner-preset-select select { min-width: 250px; }
+.tuner-preset-copy {
+  display: grid;
+  gap: 4px;
+  align-self: center;
+}
+.tuner-preset-copy strong { font-family: var(--font-display); }
+.tuner-preset-copy span { color: var(--ink-soft); font-size: .88rem; }
+.tuner-mode-switch {
+  display: inline-flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+}
+.tuner-mode-switch button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-soft);
+  font: 800 .75rem var(--font-mono);
+  cursor: pointer;
+}
+.tuner-mode-switch button.active {
+  background: var(--espresso);
+  color: var(--bg-2);
+}
 .tuning-string-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+.tuning-string-wrap {
+  display: grid;
+  gap: 6px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: 17px;
+}
+.tuning-string-wrap.active { border-color: var(--terracotta); }
+.tuning-string-wrap > label select {
+  width: 100%;
+  min-height: 40px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--ink);
 }
 .tuning-string {
   display: grid;
@@ -1610,6 +1665,7 @@ button.tab-cell.active::before { background: var(--terracotta); }
   color: var(--ink);
   text-align: left;
   cursor: pointer;
+  width: 100%;
 }
 .tuning-string > span {
   grid-column: 1;
@@ -1623,7 +1679,7 @@ button.tab-cell.active::before { background: var(--terracotta); }
   font: 800 1.35rem var(--font-display);
 }
 .tuning-string > small { grid-column: 1; }
-.tuning-string.active {
+.tuning-string[aria-pressed="true"] {
   border-color: var(--terracotta);
   background: color-mix(in srgb, var(--terracotta) 9%, var(--bg));
 }
@@ -1691,6 +1747,36 @@ button.tab-cell.active::before { background: var(--terracotta); }
   margin-top: 12px;
 }
 .tuner-step-controls .btn { padding: 10px 16px; font-size: .85rem; }
+.microphone-tuner-controls {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  text-align: center;
+}
+.microphone-tuner-controls p {
+  max-width: 560px;
+  color: var(--ink-soft);
+  font-size: .88rem;
+}
+.microphone-tuner-controls .tuner-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #b42318 12%, var(--bg-2));
+  color: #b42318;
+  font-weight: 700;
+}
+.tuner-safety-note {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-left: 4px solid var(--butter-d);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--butter) 14%, var(--bg-2));
+}
+.tuner-safety-note strong { flex: 0 0 auto; }
+.tuner-safety-note span { color: var(--ink-soft); }
 
 .reading-sprint-controls {
   display: grid;
@@ -1852,6 +1938,8 @@ button.tab-cell.active::before { background: var(--terracotta); }
   .tab-reading-grid,
   .tuner-layout,
   .change-coach-layout { grid-template-columns: 1fr; }
+  .tuner-setup { grid-template-columns: 1fr 1fr; align-items: end; }
+  .tuner-mode-switch { grid-column: 1 / -1; justify-self: start; }
   .change-coach-settings {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1892,6 +1980,13 @@ button.tab-cell.active::before { background: var(--terracotta); }
   .chord-library,
   .tuning-string-list,
   .progression-picker { grid-template-columns: 1fr 1fr; }
+  .tuner-setup { grid-template-columns: 1fr; padding: 18px 14px; }
+  .tuner-preset-select,
+  .tuner-preset-select select,
+  .tuner-mode-switch { width: 100%; }
+  .tuner-mode-switch { grid-column: auto; }
+  .tuner-mode-switch button { flex: 1; }
+  .tuner-safety-note { flex-direction: column; }
   .chord-lab-layout { min-width: 0; }
   .chord-diagram-card { padding: 14px 10px 20px; }
   .change-coach-settings { grid-template-columns: 1fr; }
