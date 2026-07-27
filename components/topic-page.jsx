@@ -11,6 +11,23 @@ function outcomeChips(outcomes) {
   return (outcomes || []).map(o => OUTCOME_MAP[o]).filter(Boolean);
 }
 
+function IcipBanner({ compact }) {
+  return (
+    <aside className="icip-banner" aria-label="First Nations cultural protocol reminder">
+      <div className="eyebrow">Respect · context · credit</div>
+      <strong>First Nations music carries cultural knowledge.</strong>
+      <p>
+        Name the people, language group and Country when these are known. Credit
+        your sources, follow the teacher’s guidance, and do not copy, remix or
+        publish culturally restricted material without permission.
+      </p>
+      {!compact && (
+        <p>Ask before sharing: access to a recording does not automatically grant permission to reuse it.</p>
+      )}
+    </aside>
+  );
+}
+
 function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection, difficulty, completed }) {
   if (!topic) return null;
   const yearData = window.CURRICULUM[year];
@@ -34,6 +51,22 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
     }
   })();
 
+  const reflectionKey = "music.reflection." + topic.id;
+  const [reflection, setReflection] = React.useState(() => {
+    try { return localStorage.getItem(reflectionKey) || ""; } catch { return ""; }
+  });
+  const [reflectionSaved, setReflectionSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    try { setReflection(localStorage.getItem(reflectionKey) || ""); } catch { setReflection(""); }
+    setReflectionSaved(false);
+  }, [reflectionKey]);
+
+  function saveReflection() {
+    try { localStorage.setItem(reflectionKey, reflection.trim()); } catch {}
+    setReflectionSaved(true);
+  }
+
   return (
     <article className="col gap-6">
       {/* Breadcrumb bar */}
@@ -53,7 +86,7 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
           {outcomeChips(topic.outcomes).map(({ code, label }) => (
             <Chip key={code} variant="teal" title={label}>{code}</Chip>
           ))}
-          {completed && <Chip variant="butter">✓ Complete</Chip>}
+          {completed && <Chip variant="butter">✓ Practised on this device</Chip>}
         </div>
       </div>
 
@@ -222,6 +255,39 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
             </div>
           </section>
 
+          <section className="reflection-card chunk paper" aria-labelledby={"reflection-" + topic.id}>
+            <div className="eyebrow">Reflect</div>
+            <h2 id={"reflection-" + topic.id}>Capture one musical decision</h2>
+            <p className="text-soft">
+              What did you try, what changed, and what would you improve next time?
+              Use a musical term such as rhythm, pitch, timbre, texture, dynamics or structure.
+            </p>
+            <label className="sr-only" htmlFor={"reflection-text-" + topic.id}>
+              Private practice reflection for {topic.title}
+            </label>
+            <textarea
+              id={"reflection-text-" + topic.id}
+              value={reflection}
+              maxLength={700}
+              placeholder="I changed… because… Next time I will…"
+              onChange={(event) => {
+                setReflection(event.target.value);
+                setReflectionSaved(false);
+              }}
+            />
+            <div className="row between center wrap gap-3">
+              <span className="text-soft reflection-privacy">
+                Private to this browser · not submitted to your teacher
+              </span>
+              <button className="btn btn-teal" onClick={saveReflection} disabled={!reflection.trim()}>
+                {reflectionSaved ? "Saved" : "Save reflection"}
+              </button>
+            </div>
+            <div className="sr-only" aria-live="polite">
+              {reflectionSaved ? "Reflection saved on this device." : ""}
+            </div>
+          </section>
+
           {/* Interactive */}
           {Interactive && (
             <section>
@@ -230,7 +296,7 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
                   <div className="eyebrow">Try it</div>
                   <h2 style={{ fontSize: "1.5rem" }}>Interactive</h2>
                 </div>
-                <Chip variant="teal">+50 XP</Chip>
+                <Chip variant="teal">Interactive practice</Chip>
               </div>
               <Interactive
                 topic={topic}
@@ -242,13 +308,13 @@ function TopicPage({ year, topic, onBack, onComplete, onNavigate, onOpenSection,
 
           {!Interactive && (
             <section className="chunk paper" style={{ padding: "22px 26px" }}>
-              <div className="eyebrow mb-2">Mark progress</div>
+              <div className="eyebrow mb-2">Practice note</div>
               <p className="text-soft" style={{ fontSize: ".95rem", marginBottom: 14 }}>
-                A dedicated interactive for this topic is on the way. For now, mark the module
-                complete once you've worked through the class activities.
+                Save a private reminder that you have practised this topic. This stays on this
+                browser and is not a school completion record.
               </p>
               <button className="btn btn-primary" onClick={() => onComplete(topic)}>
-                ✓ Mark complete (+20 XP)
+                ✓ I practised this
               </button>
             </section>
           )}

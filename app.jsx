@@ -111,11 +111,9 @@ function SignedInApp({ student, tweaks, setTweak }) {
     window.postMessage({ type: "__activate_edit_mode" }, "*");
   }
 
-  // Per-student progress / XP / streak
+  // Practice notes are stored locally on this device. They are deliberately
+  // informal and are not a school assessment or learning-management record.
   const [progress, setProgress] = useStudentLocal("progress", {}, studentId);
-  const [xp, setXp]   = useStudentLocal("xp", 0, studentId);
-  const [streak, setStreak] = useStudentLocal("streak", 1, studentId);
-  const level = Math.floor(xp / 100) + 1;
 
   function navigateYear(y) {
     setStoredYear(y);
@@ -152,8 +150,6 @@ function SignedInApp({ student, tweaks, setTweak }) {
     const already = progress[topic.id]?.completed;
     setProgress(p => ({ ...p, [topic.id]: { completed: true, at: Date.now() } }));
     if (!already) {
-      const gain = topic.interactive ? 50 : 20;
-      setXp(x => x + gain);
       window.MusicAudio?.ding(true);
     }
   }
@@ -168,17 +164,29 @@ function SignedInApp({ student, tweaks, setTweak }) {
   const yearTopics = window.CURRICULUM[year].topics;
   const completedCount = yearTopics.filter(t => progress[t.id]?.completed).length;
 
+  React.useEffect(() => {
+    const topicTitle = currentTopic ? currentTopic.title + " · " : "";
+    document.title = topicTitle + "Stage 4 Music Companion · Woonona High";
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    requestAnimationFrame(() => main.focus({ preventScroll: true }));
+  }, [year, route.special, route.topicId, route.sectionIdx]);
+
   return (
     <div className="app">
+      <a className="skip-link" href="#main-content" onClick={(event) => {
+        event.preventDefault();
+        document.getElementById("main-content")?.focus();
+      }}>Skip to main content</a>
       <Header
         year={year}
         setYear={navigateYear}
-        xp={xp} level={level} streak={streak}
         theme={tweaks.theme}
         setTheme={(t) => setTweak("theme", t)}
         onOpenTweaks={openTweaks}
       />
 
+      <main id="main-content" tabIndex="-1">
       {route.special === "pretest" && (
         <window.TestRunner
           year={year}
@@ -243,18 +251,14 @@ function SignedInApp({ student, tweaks, setTweak }) {
       )}
 
       {!route.special && !currentTopic && route.sectionIdx == null && (
-        <YearHome
+        <window.CompanionHome
           year={year}
           progress={progress}
-          xp={xp} level={level}
-          preTest={preTest}
-          postTest={postTest}
-          completedCount={completedCount}
-          totalTopics={yearTopics.length}
           openTopic={openTopic}
           openSpecial={openSpecial}
         />
       )}
+      </main>
 
       <footer className="footer">
         <div className="col gap-2">
@@ -305,8 +309,8 @@ function SignedInApp({ student, tweaks, setTweak }) {
         </window.TweakSection>
         <window.TweakSection label="This device">
           <window.TweakButton secondary label="Reset my progress" onClick={() => {
-            if (!confirm("This clears all progress saved on this device: XP, badges, quiz scores and test results. Continue?")) return;
-            setProgress({}); setXp(0); setStreak(1);
+            if (!confirm("This clears practice notes, quiz scores and test results saved on this device. Continue?")) return;
+            setProgress({});
             window.Students.resetProgress();
           }} />
         </window.TweakSection>
