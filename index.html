@@ -5,52 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="Interactive Stage 4 Music practice for Woonona High School, including guitar, piano, rhythm, listening and notation." />
 <title>Woonona High Music · Stage 4</title>
-<link rel="icon" href="assets/rise-logo.jpg" type="image/jpeg" />
+<link rel="icon" href="/assets/rise-logo.jpg" type="image/jpeg" />
 
-<!-- Fonts are self-hosted in assets/fonts (no external CDN) so the site works
-     offline and on networks that block Google Fonts. -->
-<link rel="stylesheet" href="fonts.css" />
-
-<link rel="stylesheet" href="styles.css?v=20260726-2" />
-
-<!-- React + Babel are vendored locally (in /vendor) so the site works offline and
-     does not depend on a third-party CDN staying reachable. -->
-<script src="vendor/react.development.js"></script>
-<script src="vendor/react-dom.development.js"></script>
-<script src="vendor/babel.min.js"></script>
+<!-- Fonts are self-hosted in assets/fonts (no external CDN). Vite rewrites these
+     references for the production bundle. -->
+<link rel="stylesheet" href="/fonts.css" />
+<link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
 <div id="root"></div>
 
-<script src="image-slot.js"></script>
-
-<script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="lib/audio.jsx?v=20260726-2"></script>
-<script type="text/babel" src="lib/ui.jsx"></script>
-<script type="text/babel" src="lib/store.jsx"></script>
-<script type="text/babel" src="lib/curriculum.jsx"></script>
-<script type="text/babel" src="lib/quiz-data.jsx"></script>
-<script type="text/babel" src="lib/sections-data.jsx"></script>
-<script type="text/babel" src="lib/concept-visuals.jsx"></script>
-<script type="text/babel" src="interactives/clef-trainer.jsx"></script>
-<script type="text/babel" src="interactives/rhythm-game.jsx"></script>
-<script type="text/babel" src="interactives/drum-pads.jsx"></script>
-<script type="text/babel" src="interactives/piano.jsx?v=20260726-2"></script>
-<script type="text/babel" src="interactives/instrument-studios.jsx?v=20260726-2"></script>
-<script type="text/babel" src="interactives/elements-explorer.jsx"></script>
-<script type="text/babel" src="interactives/section-bits.jsx"></script>
-<script type="text/babel" src="interactives/listening-bits.jsx"></script>
-<script type="text/babel" src="interactives/piano-bits.jsx"></script>
-<script type="text/babel" src="interactives/improv-bits.jsx"></script>
-<script type="text/babel" src="interactives/guided-listening.jsx"></script>
-<script type="text/babel" src="components/header.jsx"></script>
-<script type="text/babel" src="components/year-map.jsx"></script>
-<script type="text/babel" src="components/quiz.jsx"></script>
-<script type="text/babel" src="components/test-runner.jsx"></script>
-<script type="text/babel" src="components/progress-dashboard.jsx"></script>
-<script type="text/babel" src="components/topic-page.jsx"></script>
-<script type="text/babel" src="components/section-page.jsx"></script>
-<script type="text/babel" src="lib/dev-checks.jsx"></script>
-<script type="text/babel" src="app.jsx?v=20260726-2"></script>
+<script type="module" src="/virtual:stage4-app"></script>
 </body>
 </html>

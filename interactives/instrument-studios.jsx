@@ -923,7 +923,7 @@ function GuitarStudio({ year, onBack, onSwitch }) {
   }, []);
 
   return (
-    <main className="instrument-studio">
+    <div className="instrument-studio">
       <StudioBackBar year={year} onBack={onBack} active="guitar" onSwitch={onSwitch} />
       <header className="studio-hero studio-hero-guitar">
         <div className="studio-hero-copy">
@@ -970,7 +970,7 @@ function GuitarStudio({ year, onBack, onSwitch }) {
       <GuitarProgressionLab />
       <GuitarTabLab />
       <GuitarTunerLab />
-    </main>
+    </div>
   );
 }
 
@@ -1323,7 +1323,7 @@ function PianoStudio({ year, onBack, onSwitch }) {
   }, []);
 
   return (
-    <main className="instrument-studio">
+    <div className="instrument-studio">
       <StudioBackBar year={year} onBack={onBack} active="piano" onSwitch={onSwitch} />
       <header className="studio-hero studio-hero-piano">
         <div className="studio-hero-copy">
@@ -1380,7 +1380,7 @@ function PianoStudio({ year, onBack, onSwitch }) {
         </div>
         <window.PianoPlayer topic={{ pianoSong: "hotcross" }} difficulty="medium" />
       </section>
-    </main>
+    </div>
   );
 }
 
