@@ -96,6 +96,18 @@ const GUITAR_PROGRESSIONS = [
 ];
 
 const CHASING_CARS_EASY_BARS = ["A", "A", "E", "E", "D", "D", "A", "A"];
+// Transcribed from the clearly legible small tab staff on the supplied easy
+// sheet: four pairs of G-string note + open high E per bar.
+const CHASING_CARS_MELODY_BARS = [
+  { chord: "A", riffFret: 2 },
+  { chord: "A", riffFret: 2 },
+  { chord: "E", riffFret: 1 },
+  { chord: "E", riffFret: 1 },
+  { chord: "D", riffFret: 0 },
+  { chord: "D", riffFret: 0 },
+  { chord: "A", riffFret: 2 },
+  { chord: "A", riffFret: 2 },
+];
 const CHASING_CARS_PROPER_BARS = [
   { chord: "C", frets: [-1, 3, 2, 0, 1, 0] },
   { chord: "G/B", frets: [-1, 2, 0, 0, 0, 3] },
@@ -289,17 +301,22 @@ function playGuitarShape(chordKey, direction = "down") {
   playGuitarFrets(chord.frets, direction);
 }
 
-function playGuitarFrets(frets, direction = "down", velocity = 0.72) {
+function playGuitarNote(stringIndex, fret, voice = "practice", duration = 1.25, velocity = 0.78) {
+  const method = voice === "acoustic" ? "playAcoustic" : "playPluck";
+  return window.MusicAudio?.[method]?.(
+    guitarNoteFor(stringIndex, fret),
+    duration,
+    velocity
+  );
+}
+
+function playGuitarFrets(frets, direction = "down", velocity = 0.72, voice = "practice") {
   const indexes = frets.map((_, i) => i).filter(i => frets[i] >= 0);
   if (direction === "up") indexes.reverse();
   window.MusicAudio?.resume();
   indexes.forEach((stringIndex, order) => {
     setTimeout(() => {
-      window.MusicAudio?.playPluck(
-        guitarNoteFor(stringIndex, frets[stringIndex]),
-        1.35,
-        velocity
-      );
+      playGuitarNote(stringIndex, frets[stringIndex], voice, 1.35, velocity);
     }, order * 48);
   });
 }
@@ -873,18 +890,28 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
   const [playing, setPlaying] = React.useState(false);
   const [activeBar, setActiveBar] = React.useState(-1);
   const [activeBeat, setActiveBeat] = React.useState(-1);
+  const [activeNote, setActiveNote] = React.useState(-1);
   const [count, setCount] = React.useState(0);
+  const [voice, setVoice] = React.useState("practice");
+  const [melodyOn, setMelodyOn] = React.useState(true);
+  const [rhythmOn, setRhythmOn] = React.useState(true);
   const timersRef = React.useRef([]);
   const loopRef = React.useRef(loop);
+  const partsRef = React.useRef({ melodyOn, rhythmOn });
+  const voiceRef = React.useRef(voice);
   const currentBars = version === "easy"
-    ? CHASING_CARS_EASY_BARS.map(chord => ({ chord, frets: GUITAR_CHORDS[chord].frets }))
+    ? CHASING_CARS_EASY_BARS.map((chord, index) => ({
+        chord,
+        frets: GUITAR_CHORDS[chord].frets,
+        riffFret: CHASING_CARS_MELODY_BARS[index].riffFret,
+      }))
     : CHASING_CARS_PROPER_BARS;
   const sheet = version === "easy"
     ? {
         src: "assets/year8/chasing-cars-easy.jpg",
         alt: "Teacher-supplied easy Chasing Cars guitar page showing A, E and D chord diagrams, tablature and a handwritten strumming pattern.",
         label: "Easy version",
-        detail: "A · E · D chord loop with the class strumming pattern",
+        detail: "Simple tab melody · A–E–D chord rhythm",
       }
     : {
         src: "assets/year8/chasing-cars-proper.jpg",
@@ -897,6 +924,14 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
     loopRef.current = loop;
   }, [loop]);
 
+  React.useEffect(() => {
+    partsRef.current = { melodyOn, rhythmOn };
+  }, [melodyOn, rhythmOn]);
+
+  React.useEffect(() => {
+    voiceRef.current = voice;
+  }, [voice]);
+
   function clearTimers() {
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
@@ -907,6 +942,7 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
     setPlaying(false);
     setActiveBar(-1);
     setActiveBeat(-1);
+    setActiveNote(-1);
     setCount(0);
   }
 
@@ -924,10 +960,16 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
     const stringIndex = pattern[beatIndex];
     const fret = bar.frets[stringIndex];
     if (fret < 0) return;
-    window.MusicAudio?.playPluck(guitarNoteFor(stringIndex, fret), 1.1, 0.8);
+    playGuitarNote(stringIndex, fret, voiceRef.current, 1.1, 0.8);
   }
 
-  function playEasyBeat(bar, beatIndex) {
+  function playMelodyNote(bar, noteIndex) {
+    const stringIndex = noteIndex % 2 === 0 ? 3 : 5;
+    const fret = noteIndex % 2 === 0 ? bar.riffFret : 0;
+    playGuitarNote(stringIndex, fret, voiceRef.current, 1.05, 0.82);
+  }
+
+  function playRhythmHit(bar, beatIndex) {
     const rhythm = [
       { beat: 0, direction: "down" },
       { beat: 1, direction: "down" },
@@ -935,7 +977,7 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
       { beat: 2, direction: "down" },
       { beat: 3, direction: "down" },
     ];
-    playGuitarFrets(bar.frets, rhythm[beatIndex].direction, 0.76);
+    playGuitarFrets(bar.frets, rhythm[beatIndex].direction, 0.66, voiceRef.current);
   }
 
   function schedulePass(delayBefore = 0) {
@@ -945,12 +987,18 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
 
     currentBars.forEach((bar, barIndex) => {
       if (version === "easy") {
-        const beats = [0, 1, 1.5, 2, 3];
-        beats.forEach((beat, beatIndex) => {
+        for (let noteIndex = 0; noteIndex < 8; noteIndex++) {
           queue(() => {
             setActiveBar(barIndex);
-            setActiveBeat(Math.floor(beat));
-            playEasyBeat(bar, beatIndex);
+            setActiveBeat(Math.floor(noteIndex / 2));
+            setActiveNote(noteIndex);
+            if (partsRef.current.melodyOn) playMelodyNote(bar, noteIndex);
+          }, delayBefore + barIndex * barMs + noteIndex * beatMs / 2);
+        }
+        const rhythmBeats = [0, 1, 1.5, 2, 3];
+        rhythmBeats.forEach((beat, beatIndex) => {
+          queue(() => {
+            if (partsRef.current.rhythmOn) playRhythmHit(bar, beatIndex);
           }, delayBefore + barIndex * barMs + beat * beatMs);
         });
       } else {
@@ -971,6 +1019,7 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
         setPlaying(false);
         setActiveBar(-1);
         setActiveBeat(-1);
+        setActiveNote(-1);
       }
     }, delayBefore + passMs);
   }
@@ -1004,10 +1053,27 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
     setPlaying(false);
     setCount(0);
     setActiveBeat(-1);
+    setActiveNote(-1);
     const bar = currentBars[index];
     setActiveBar(index);
     if (version === "easy") {
-      playGuitarFrets(bar.frets, "down", 0.8);
+      for (let note = 0; note < 8; note++) {
+        queue(() => {
+          setActiveBeat(Math.floor(note / 2));
+          setActiveNote(note);
+          if (partsRef.current.melodyOn) playMelodyNote(bar, note);
+        }, note * 120);
+      }
+      const rhythmTimes = [0, 240, 360, 480, 720];
+      rhythmTimes.forEach((time, hit) => {
+        queue(() => {
+          if (partsRef.current.rhythmOn) playRhythmHit(bar, hit);
+        }, time);
+      });
+      queue(() => {
+        setActiveBeat(-1);
+        setActiveNote(-1);
+      }, 1020);
     } else {
       for (let note = 0; note < 8; note++) {
         queue(() => {
@@ -1019,6 +1085,21 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
     }
   }
 
+  function melodyEvent(bar, noteIndex) {
+    return noteIndex % 2 === 0
+      ? { string: 3, fret: bar.riffFret }
+      : { string: 1, fret: 0 };
+  }
+
+  const noEasyParts = version === "easy" && !melodyOn && !rhythmOn;
+  const partMessage = melodyOn && rhythmOn
+    ? "Both parts are sounding. Listen for how they lock together."
+    : rhythmOn
+      ? "Rhythm backing is on. Play the simple melody yourself."
+      : melodyOn
+        ? "Melody backing is on. Play the chord rhythm yourself."
+        : "Turn on Melody, Rhythm, or both before playing.";
+
   return (
     <section className="studio-section chasing-cars-lab" aria-labelledby="chasing-cars-title">
       <div className="studio-section-heading">
@@ -1026,8 +1107,9 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
           <div className="eyebrow">Year 8 class song · guitar</div>
           <h2 id="chasing-cars-title">Chasing Cars practice room</h2>
           <p>
-            Start with the easy chord version, then move to the proper notation and tab.
-            The playback is a practice guide; follow the supplied sheet for the exact arrangement.
+            Practise the easy melody and rhythm together or isolate either part, then move
+            to the proper notation and tab. Playback is a guide; the supplied sheet remains
+            the authority for the exact arrangement.
           </p>
         </div>
         <Chip variant="teal">Class tempo · 100 bpm</Chip>
@@ -1038,7 +1120,7 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
           aria-pressed={version === "easy"} onClick={() => changeVersion("easy")}>
           <span>1</span>
           <strong>Easy version</strong>
-          <small>A · E · D and strumming</small>
+          <small>Simple tab melody · A–E–D rhythm</small>
         </button>
         <button className={version === "proper" ? "active" : ""}
           aria-pressed={version === "proper"} onClick={() => changeVersion("proper")}>
@@ -1065,7 +1147,7 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
         <div className="chasing-player chunk paper">
           <div className="chasing-player-top">
             <div>
-              <span className="eyebrow">{version === "easy" ? "Strumming loop" : "Fingerstyle guide"}</span>
+              <span className="eyebrow">{version === "easy" ? "Two-part practice guide" : "Fingerstyle guide"}</span>
               <h3>{sheet.label}</h3>
             </div>
             <div className={"chasing-count " + (count ? "active" : "")}
@@ -1077,26 +1159,102 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
             </div>
           </div>
 
-          <div className="chasing-bars" aria-label={`${sheet.label} practice sequence`}>
-            {currentBars.map((bar, index) => (
-              <button key={index}
-                className={activeBar === index ? "active" : ""}
-                onClick={() => previewBar(index)}
-                aria-label={`Bar ${index + 1}, ${bar.chord}`}
-                aria-pressed={activeBar === index}>
-                <span>{index + 1}</span>
-                <strong>{bar.chord}</strong>
-                <i aria-hidden="true">
-                  {[0, 1, 2, 3].map(beat => (
-                    <b className={activeBar === index && activeBeat === beat ? "active" : ""} key={beat} />
+          {version === "easy" ? (
+            <>
+              <div className="chasing-part-mixer" aria-label="Easy version part mixer">
+                <div className="chasing-part-heading">
+                  <div>
+                    <span className="eyebrow">Part mixer</span>
+                    <strong>Choose what the guide plays</strong>
+                  </div>
+                  <span>{melodyOn && rhythmOn ? "2 parts" : melodyOn || rhythmOn ? "1 part" : "Muted"}</span>
+                </div>
+                <div className="chasing-part-buttons" role="group" aria-label="Toggle accompaniment parts">
+                  <button className={melodyOn ? "active" : ""} aria-pressed={melodyOn}
+                    onClick={() => setMelodyOn(value => !value)}>
+                    <span aria-hidden="true">♪</span>
+                    <strong>Melody</strong>
+                    <small>{melodyOn ? "Heard" : "You play it"}</small>
+                  </button>
+                  <button className={rhythmOn ? "active" : ""} aria-pressed={rhythmOn}
+                    onClick={() => setRhythmOn(value => !value)}>
+                    <span aria-hidden="true">↓↓</span>
+                    <strong>Rhythm</strong>
+                    <small>{rhythmOn ? "Heard" : "You play it"}</small>
+                  </button>
+                </div>
+                <p className={noEasyParts ? "warning" : ""}>{partMessage}</p>
+              </div>
+
+              <div className="chasing-tab-card">
+                <div className="chasing-tab-heading">
+                  <div>
+                    <span className="eyebrow">Simple melody tab</span>
+                    <strong>Alternate the G string with open high E</strong>
+                  </div>
+                  <span>8 even quavers per bar</span>
+                </div>
+                <div className="chasing-tab-scroll" aria-label="Simple melody tablature practice guide">
+                  {currentBars.map((bar, barIndex) => (
+                    <button key={barIndex}
+                      className={"chasing-tab-bar " + (activeBar === barIndex ? "active" : "")}
+                      onClick={() => previewBar(barIndex)}
+                      aria-label={`Preview melody bar ${barIndex + 1}, ${bar.chord}`}
+                      aria-pressed={activeBar === barIndex}>
+                      <span className="chasing-tab-chord">
+                        <b>{bar.chord}</b>
+                        <small>BAR {barIndex + 1}</small>
+                      </span>
+                      <span className="chasing-tab-lines" aria-hidden="true">
+                        {["e", "B", "G", "D", "A", "E"].map((label, rowIndex) => {
+                          const stringNumber = rowIndex + 1;
+                          return (
+                            <i className="chasing-tab-line" key={label + rowIndex}>
+                              <em>{label}</em>
+                              <span>
+                                {Array.from({ length: 8 }, (_, noteIndex) => {
+                                  const event = melodyEvent(bar, noteIndex);
+                                  const hasNote = event.string === stringNumber;
+                                  const isActive = activeBar === barIndex && activeNote === noteIndex;
+                                  return (
+                                    <b className={isActive ? "active" : ""} key={noteIndex}>
+                                      {hasNote ? event.fret : "–"}
+                                    </b>
+                                  );
+                                })}
+                              </span>
+                            </i>
+                          );
+                        })}
+                      </span>
+                    </button>
                   ))}
-                </i>
-              </button>
-            ))}
-          </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="chasing-bars" aria-label={`${sheet.label} practice sequence`}>
+              {currentBars.map((bar, index) => (
+                <button key={index}
+                  className={activeBar === index ? "active" : ""}
+                  onClick={() => previewBar(index)}
+                  aria-label={`Bar ${index + 1}, ${bar.chord}`}
+                  aria-pressed={activeBar === index}>
+                  <span>{index + 1}</span>
+                  <strong>{bar.chord}</strong>
+                  <i aria-hidden="true">
+                    {[0, 1, 2, 3].map(beat => (
+                      <b className={activeBar === index && activeBeat === beat ? "active" : ""} key={beat} />
+                    ))}
+                  </i>
+                </button>
+              ))}
+            </div>
+          )}
 
           {version === "easy" ? (
-            <div className="chasing-rhythm" aria-label="Strumming pattern: down, down up, down, down">
+            <div className={"chasing-rhythm " + (rhythmOn ? "part-active" : "part-muted")}
+              aria-label="Rhythm part: down, down up, down, down">
               <span><strong>↓</strong><small>Down</small></span>
               <span><strong>↓ ↑</strong><small>Down–up</small></span>
               <span><strong>↓</strong><small>Down</small></span>
@@ -1109,6 +1267,28 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
               <span><strong>Let ring</strong><small>Relax the hand</small></span>
             </div>
           )}
+
+          <div className="chasing-voice-control">
+            <div>
+              <span className="eyebrow">Guitar sound</span>
+              <strong>{voice === "practice" ? "Clean practice tone" : "Acoustic-style guitar"}</strong>
+            </div>
+            <div role="group" aria-label="Choose Chasing Cars guitar sound">
+              <button className={voice === "practice" ? "active" : ""}
+                aria-pressed={voice === "practice"} onClick={() => setVoice("practice")}>
+                Clean
+              </button>
+              <button className={voice === "acoustic" ? "active" : ""}
+                aria-pressed={voice === "acoustic"} onClick={() => setVoice("acoustic")}>
+                Acoustic-style
+              </button>
+            </div>
+            <small>
+              {voice === "practice"
+                ? "A clear synthetic tone makes each note easy to hear."
+                : "Generated in your browser with a virtual-string model—no recording or sample pack is used."}
+            </small>
+          </div>
 
           <div className="chasing-controls">
             <label className="studio-tempo">
@@ -1141,11 +1321,14 @@ function ChasingCarsLab({ soundEnabled, onEnableSound }) {
           )}
 
           <div className="studio-action-row">
-            <button className="btn btn-primary" onClick={play} disabled={playing || !soundEnabled}>
+            <button className="btn btn-primary" onClick={play}
+              disabled={playing || !soundEnabled || noEasyParts}>
               {playing ? "Playing…" : countIn ? "Count in and play" : "Play practice guide"}
             </button>
             <button className="btn btn-ghost" onClick={stop} disabled={!playing && activeBar < 0}>Stop</button>
-            <span className="studio-help">Select any bar to hear it on its own.</span>
+            <span className="studio-help">
+              {version === "easy" ? "Select any tab bar to preview the active parts." : "Select any bar to hear it on its own."}
+            </span>
           </div>
         </div>
       </div>

@@ -169,6 +169,62 @@
     return playPluckHz(f, dur, velocity);
   }
 
+  // Browser-generated acoustic-guitar-style voice. This uses a compact
+  // Karplus-Strong physical model (noise exciting a damped virtual string),
+  // so it needs no downloaded samples or proprietary recordings.
+  function playAcousticHz(f, dur = 1.7, velocity = 0.78) {
+    if (!ok()) return Promise.resolve(false);
+    if (!Number.isFinite(f) || f <= 0) return Promise.resolve(false);
+    return ifReady((c) => {
+      const t = c.currentTime;
+      const length = Math.max(1, Math.floor(c.sampleRate * (dur + 0.12)));
+      const delay = Math.max(2, Math.round(c.sampleRate / f));
+      const buffer = c.createBuffer(1, length, c.sampleRate);
+      const data = buffer.getChannelData(0);
+
+      for (let i = 0; i < Math.min(delay, length); i++) {
+        const pickPosition = Math.sin(Math.PI * i / delay);
+        data[i] = (Math.random() * 2 - 1) * (0.65 + 0.35 * pickPosition);
+      }
+      for (let i = delay; i < length; i++) {
+        const previous = data[i - delay];
+        const neighbour = data[Math.max(0, i - delay - 1)];
+        data[i] = (previous + neighbour) * 0.4982;
+      }
+
+      const source = c.createBufferSource();
+      source.buffer = buffer;
+      const highpass = c.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 58;
+      const body = c.createBiquadFilter();
+      body.type = "peaking";
+      body.frequency.value = 210;
+      body.Q.value = 1.1;
+      body.gain.value = 3.5;
+      const tone = c.createBiquadFilter();
+      tone.type = "lowpass";
+      tone.frequency.setValueAtTime(5200, t);
+      tone.frequency.exponentialRampToValueAtTime(1900, t + Math.min(dur, 1.1));
+      const g = c.createGain();
+      const peak = 0.3 * velocity;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      source.connect(highpass).connect(body).connect(tone).connect(g);
+      g.connect(masterGain);
+      g.connect(convolver);
+      source.start(t);
+      source.stop(t + dur + 0.08);
+    });
+  }
+
+  function playAcoustic(name, dur = 1.7, velocity = 0.78) {
+    const f = hzFromName(name); if (!f) return;
+    return playAcousticHz(f, dur, velocity);
+  }
+
   function playChord(notes, dur = 1.5, velocity = 0.7) {
     notes.forEach((n, i) => setTimeout(() => playPluck(n, dur, velocity), i * 25));
   }
@@ -301,7 +357,7 @@
   }
 
   window.MusicAudio = {
-    resume, playPiano, playPluck, playPluckHz, playChord,
+    resume, playPiano, playPluck, playPluckHz, playAcoustic, playAcousticHz, playChord,
     playKick, playSnare, playHat, playClap, playTom, playCrash,
     ding, click, hzFromName, midiFromName,
   };
