@@ -81,7 +81,7 @@
     if (typeof window === "undefined") return;
     const events = ["pointerdown", "touchstart", "keydown", "click"];
     const unlock = () => {
-      try { resume(); } catch {}
+      try { const c = resume(); if (c) decodeSamples(c); } catch {}
       events.forEach(ev => window.removeEventListener(ev, unlock, true));
     };
     events.forEach(ev => window.addEventListener(ev, unlock, true));
@@ -105,41 +105,105 @@
     return m == null ? null : hzFromMidi(m);
   }
 
-  // simple piano-ish voice: 2 detuned saws + filter env + amp env
+  // Grand piano: Salamander Grand Piano samples (Alexander Holm, CC-BY 3.0),
+  // one recording every minor third from A1 to C7, pitch-shifted to the
+  // nearest note. Files are fetched at load; decoding waits for the
+  // AudioContext. Until a sample is ready we fall back to the synth voice.
+  const SAMPLE_BASE = "assets/piano-samples/";
+  const SAMPLE_FILES = ["A1"];
+  for (let o = 2; o <= 6; o++) ["C", "Ds", "Fs", "A"].forEach(n => SAMPLE_FILES.push(n + o));
+  SAMPLE_FILES.push("C7");
+  const sampleRaw = {};      // midi -> Promise<ArrayBuffer>
+  const sampleBuf = {};      // midi -> AudioBuffer
+  let decodeStarted = false;
+
+  function fileMidi(f) { return midiFromName(f.replace("s", "#")); }
+  function preloadSamples() {
+    if (typeof fetch !== "function") return;
+    SAMPLE_FILES.forEach(f => {
+      sampleRaw[fileMidi(f)] = fetch(SAMPLE_BASE + f + ".mp3")
+        .then(r => (r.ok ? r.arrayBuffer() : null))
+        .catch(() => null);
+    });
+  }
+  function decodeSamples(c) {
+    if (decodeStarted) return;
+    decodeStarted = true;
+    Object.keys(sampleRaw).forEach(m => {
+      sampleRaw[m].then(ab => {
+        if (!ab) return;
+        // Safari's old decodeAudioData is callback-only
+        return new Promise((res, rej) => c.decodeAudioData(ab, res, rej))
+          .then(buf => { sampleBuf[m] = buf; });
+      }).catch(() => {});
+    });
+  }
+  function nearestSample(midi) {
+    let best = null;
+    for (const m in sampleBuf) {
+      if (best === null || Math.abs(m - midi) < Math.abs(best - midi)) best = +m;
+    }
+    return best;
+  }
+
   function playPiano(name, dur = 0.9, velocity = 0.8) {
     if (!ok()) return;
-    const f = hzFromName(name); if (!f) return;
+    const midi = midiFromName(name); if (midi == null) return;
     ifReady((c) => {
+      decodeSamples(c);
+      const sm = nearestSample(midi);
+      if (sm === null || Math.abs(sm - midi) > 2) { synthPiano(c, name, dur, velocity); return; }
       const t = c.currentTime;
-
-      const osc1 = c.createOscillator(); osc1.type = "triangle"; osc1.frequency.value = f;
-      const osc2 = c.createOscillator(); osc2.type = "sine";     osc2.frequency.value = f * 2;
-      const osc3 = c.createOscillator(); osc3.type = "sine";     osc3.frequency.value = f;
-
-      const filter = c.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(2800, t);
-      filter.frequency.exponentialRampToValueAtTime(900, t + dur);
-      filter.Q.value = 1.2;
-
+      const src = c.createBufferSource();
+      src.buffer = sampleBuf[sm];
+      src.playbackRate.value = Math.pow(2, (midi - sm) / 12);
       const g = c.createGain();
-      const peak = 0.32 * velocity;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-      const mix = c.createGain();
-      mix.gain.value = 1;
-      osc1.connect(mix); osc2.connect(mix); osc3.connect(mix);
-      mix.connect(filter).connect(g);
+      const peak = 2.2 * velocity;   // recordings peak ~0.25; match the synth level
+      // Let the note ring for its written length, then damp like a key release.
+      const hold = Math.max(dur, 0.3);
+      g.gain.setValueAtTime(peak, t);
+      g.gain.setValueAtTime(peak, t + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + hold + 0.45);
+      src.connect(g);
       g.connect(masterGain);
       g.connect(convolver);
-
-      osc1.start(t); osc2.start(t); osc3.start(t);
-      osc1.stop(t + dur + 0.05);
-      osc2.stop(t + dur + 0.05);
-      osc3.stop(t + dur + 0.05);
+      src.start(t);
+      src.stop(t + hold + 0.5);
     });
+  }
+
+  // simple piano-ish voice: 2 detuned saws + filter env + amp env
+  function synthPiano(c, name, dur, velocity) {
+    const f = hzFromName(name); if (!f) return;
+    const t = c.currentTime;
+
+    const osc1 = c.createOscillator(); osc1.type = "triangle"; osc1.frequency.value = f;
+    const osc2 = c.createOscillator(); osc2.type = "sine";     osc2.frequency.value = f * 2;
+    const osc3 = c.createOscillator(); osc3.type = "sine";     osc3.frequency.value = f;
+
+    const filter = c.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(2800, t);
+    filter.frequency.exponentialRampToValueAtTime(900, t + dur);
+    filter.Q.value = 1.2;
+
+    const g = c.createGain();
+    const peak = 0.32 * velocity;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    const mix = c.createGain();
+    mix.gain.value = 1;
+    osc1.connect(mix); osc2.connect(mix); osc3.connect(mix);
+    mix.connect(filter).connect(g);
+    g.connect(masterGain);
+    g.connect(convolver);
+
+    osc1.start(t); osc2.start(t); osc3.start(t);
+    osc1.stop(t + dur + 0.05);
+    osc2.stop(t + dur + 0.05);
+    osc3.stop(t + dur + 0.05);
   }
 
   // Pluck voice used by the guitar learning tools. The Hz variant lets the
@@ -355,6 +419,8 @@
       o.start(t); o.stop(t + 0.05);
     });
   }
+
+  preloadSamples();
 
   window.MusicAudio = {
     resume, playPiano, playPluck, playPluckHz, playAcoustic, playAcousticHz, playChord,

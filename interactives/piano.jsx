@@ -415,8 +415,98 @@ function parseCustom(text) {
   return seq;
 }
 
+/* ---------- Free play: note naming + a treble stave of recent notes ---------- */
+const FREE_PLAY = {
+  name: "Free play",
+  note: "Play anything. Each key shows its letter name and where it sits on the treble stave",
+  bpm: 100,
+  rh: [],
+};
+const FLAT_OF = { C: "D♭", D: "E♭", F: "G♭", G: "A♭", A: "B♭" };
+
+function letterOf(n) { return n.replace(/-?\d/, "").replace("#", "♯"); }
+function octaveOf(n) { return n.match(/-?\d/)[0]; }
+function freeNoteCaption(n) {
+  if (n === "C4") return "Middle C";
+  if (n.includes("#")) return "also called " + FLAT_OF[n[0]] + " · a black key";
+  return "octave " + octaveOf(n) + " · a white key";
+}
+
+function FreePlayStave({ played }) {
+  const SLOTS = 12;
+  const SLOT = 46;
+  const PAD_L = 70;
+  const width = PAD_L + SLOTS * SLOT + 16;
+  const recent = played.slice(-SLOTS);
+  const trebleY = [50, 58, 66, 74, 82];
+
+  return (
+    <div className="free-stave" style={{
+      padding: "10px 14px 6px",
+      background: "var(--bg)",
+      border: "1.5px solid var(--border)",
+      borderRadius: 12,
+      marginBottom: 14,
+      overflowX: "auto",
+    }}>
+      <svg viewBox={`0 18 ${width} 112`} width="100%" height="150"
+           preserveAspectRatio="xMinYMid meet"
+           role="img" aria-label={recent.length
+             ? "Notes played: " + recent.map(p => p.note).join(", ")
+             : "Empty treble stave"}
+           style={{ display: "block", color: "var(--ink)", minWidth: 420 }}>
+        <g stroke="currentColor" strokeWidth="1" opacity=".85">
+          {trebleY.map(y => <line key={y} x1={PAD_L - 52} x2={width - 8} y1={y} y2={y} />)}
+        </g>
+        <text x={PAD_L - 14} y={82} fontSize="42"
+              fontFamily="'Bravura Text','Noto Music','Segoe UI Symbol','Apple Symbols',Georgia,serif"
+              fill="currentColor" textAnchor="end">𝄞</text>
+        {recent.length === 0 && (
+          <text x={PAD_L + 12} y={44} fontSize="11" fontFamily="var(--font-mono)"
+                fill="var(--ink-soft)">Press any key: your notes appear here</text>
+        )}
+        {recent.map((p, i) => {
+          const x = PAD_L + i * SLOT + 22;
+          const y = noteY(p.note);
+          const latest = i === recent.length - 1;
+          const color = latest ? "var(--terracotta)" : "var(--ink)";
+          const opacity = latest ? 1 : 0.35 + 0.55 * (i / SLOTS);
+          const ledgers = [];
+          if (y >= 90) for (let ly = 90; ly <= y; ly += 8) ledgers.push(ly);
+          if (y <= 42) for (let ly = 42; ly >= y; ly -= 8) ledgers.push(ly);
+          const stemUp = y > 66;
+          const stemX = stemUp ? x + 5 : x - 5;
+          return (
+            <g key={p.id} opacity={opacity} className={latest ? "free-stave-latest" : undefined}>
+              {latest && <rect x={x - 17} y={26} width="34" height={98} rx={8}
+                               fill="var(--terracotta)" opacity=".10" />}
+              {ledgers.map(ly => (
+                <line key={ly} x1={x - 9} x2={x + 9} y1={ly} y2={ly}
+                      stroke={color} strokeWidth="1.2" />
+              ))}
+              {p.note.includes("#") && (
+                <text x={x - 13} y={y + 4} fontSize="14" textAnchor="middle" fontWeight="700"
+                      fontFamily="'Bravura Text','Noto Music','Segoe UI Symbol',Georgia,serif"
+                      fill={color}>♯</text>
+              )}
+              <ellipse cx={x} cy={y} rx="5.6" ry="4.2"
+                       transform={`rotate(-20 ${x} ${y})`} fill={color} />
+              <line x1={stemX} y1={stemUp ? y - 2 : y + 2} x2={stemX} y2={stemUp ? y - 28 : y + 28}
+                    stroke={color} strokeWidth="1.4" />
+              <text x={x} y={122} fontSize="11" fontFamily="var(--font-mono)"
+                    fill={color} textAnchor="middle" fontWeight={latest ? 700 : 500}>
+                {letterOf(p.note)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function PianoPlayer({ topic, difficulty, onComplete }) {
-  const initialKey = (topic && topic.pianoSong && SONGS[topic.pianoSong])
+  const initialKey = (topic && topic.pianoSong && (SONGS[topic.pianoSong] || topic.pianoSong === "free"))
     ? topic.pianoSong
     : "simpleStone";
   const [selected, setSelected] = React.useState(initialKey);
@@ -424,7 +514,15 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
   const [showCustom, setShowCustom] = React.useState(false);
   const [customText, setCustomText] = React.useState("E4 G4 C5/2 G4 E4 C4/2");
 
-  const song = custom || SONGS[selected];
+  const isFree = selected === "free" && !custom;
+  const song = custom || (isFree ? FREE_PLAY : SONGS[selected]);
+
+  // Free play: notes played (for the stave) and short-lived labels over the keys
+  const [played, setPlayed] = React.useState([]);
+  const [pops, setPops] = React.useState([]);
+  const popId = React.useRef(0);
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const rootRef = React.useRef(null);
 
   const [rhPos, setRhPos] = React.useState(-1);
   const [lhPos, setLhPos] = React.useState(-1);
@@ -452,6 +550,7 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
       // ignore when user is typing into the custom-notes textarea
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const n = keyMap[e.key.toLowerCase()];
       if (n) pressKey(n);
     };
@@ -470,8 +569,14 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
   });
 
   function pressKey(n) {
-    window.MusicAudio?.playPiano(n, 0.6);
+    window.MusicAudio?.playPiano(n, isFree ? 1.4 : 0.6);
     setActiveKeys(s => new Set(s).add(n));
+    if (isFree) {
+      const id = ++popId.current;
+      setPlayed(p => [...p.slice(-23), { id, note: n }]);
+      setPops(p => [...p, { id, note: n }]);
+      setTimeout(() => setPops(p => p.filter(x => x.id !== id)), 950);
+    }
     const exp = expectedRef.current;
     if (exp && n === exp) {
       setScoreHits(h => h + 1);
@@ -551,9 +656,66 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
     setShowCustom(false);
   }
 
+  // ---- Full screen: real Fullscreen API where allowed, CSS overlay otherwise (iPhone Safari) ----
+  React.useEffect(() => {
+    const onChange = () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!fsEl && fullscreen) setFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+    };
+  }, [fullscreen]);
+  React.useEffect(() => {
+    if (!fullscreen) return;
+    const onEsc = (e) => { if (e.key === "Escape") exitFullscreen(); };
+    window.addEventListener("keydown", onEsc);
+    document.body.classList.add("piano-fs-lock");
+    return () => {
+      window.removeEventListener("keydown", onEsc);
+      document.body.classList.remove("piano-fs-lock");
+    };
+  }, [fullscreen]);
+
+  function enterFullscreen() {
+    setFullscreen(true);
+    const el = rootRef.current;
+    const req = el && (el.requestFullscreen || el.webkitRequestFullscreen);
+    if (req) {
+      try {
+        const p = req.call(el);
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {}
+    }
+  }
+  function exitFullscreen() {
+    setFullscreen(false);
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fsEl && exit) {
+      try {
+        const p = exit.call(document);
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {}
+    }
+  }
+
   // ---- Layout dimensions ----
-  const KW = 44;
-  const KH = 170;
+  // Keys grow to fill the screen in full-screen mode
+  const [view, setView] = React.useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  React.useEffect(() => {
+    if (!fullscreen) return;
+    const onResize = () => setView({ w: window.innerWidth, h: window.innerHeight });
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [fullscreen]);
+  // 104px = full-screen side padding + scrollbar; 520px = controls, readout, stave and footer above the keys
+  const KW = fullscreen ? Math.max(44, Math.min(96, Math.floor((view.w - 104) / WHITE_KEYS.length))) : 44;
+  const KH = fullscreen ? Math.max(170, Math.min(Math.round(KW * 3.9), view.h - 520)) : 170;
   const totalW = WHITE_KEYS.length * KW;
 
   // Total beats for staff width
@@ -573,11 +735,19 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
   const isStoneAge = selected === "simpleStone" || selected === "extensionStone";
 
   return (
-    <div className="chunk paper" style={{ padding: 20 }}>
+    <div ref={rootRef}
+         className={"chunk paper piano-player" + (fullscreen ? " piano-fullscreen" : "")}
+         style={{ padding: 20 }}>
 
       {/* Song picker */}
       <div className="row between center wrap gap-3 mb-3">
         <div className="row gap-2 wrap">
+          <button
+            className={"chip " + (isFree ? "solid-teal" : "")}
+            onClick={() => { setCustom(null); setSelected("free"); }}
+            style={{ cursor: "pointer" }}>
+            <span style={{ all: "unset" }}>🎹 Free play</span>
+          </button>
           {Object.entries(SONGS).map(([k, v]) => (
             <button key={k}
               className={"chip " + (selected === k && !custom ? "solid-terracotta" : "")}
@@ -591,15 +761,38 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
             <span style={{ all: "unset" }}>+ Custom notes</span>
           </button>
         </div>
-        <div className="row gap-2 wrap">
-          <Chip>♩ = {tempo} bpm</Chip>
+        <div className="row gap-2 wrap center">
+          <button className="btn btn-ghost piano-fs-btn"
+                  onClick={fullscreen ? exitFullscreen : enterFullscreen}
+                  aria-pressed={fullscreen}>
+            {fullscreen ? "✕ Exit full screen" : "⛶ Full screen"}
+          </button>
+          {!isFree && <Chip>♩ = {tempo} bpm</Chip>}
           {song.lh && <Chip variant="butter">LH bass · 2 hands</Chip>}
           {rhPos >= 0 && <Chip variant="teal">{scoreHits}✓ · {scoreMiss}✗</Chip>}
           {finished && <Chip variant="terracotta">Done · {scoreHits}/{song.rh.length}</Chip>}
         </div>
       </div>
 
+      {isFree && (
+        <div className="row gap-3 wrap center mb-3">
+          <div className="free-note-readout" aria-live="polite">
+            {played.length ? (
+              <React.Fragment key={played[played.length - 1].id}>
+                <span className="free-note-big">{letterOf(played[played.length - 1].note)}</span>
+                <span className="free-note-sub">{freeNoteCaption(played[played.length - 1].note)}</span>
+              </React.Fragment>
+            ) : (
+              <span className="free-note-sub">Play a key to see its name</span>
+            )}
+          </div>
+          <button className="btn btn-ghost" onClick={() => setPlayed([])}
+                  disabled={!played.length}>↻ Clear stave</button>
+        </div>
+      )}
+
       {/* Tempo slider */}
+      {!isFree && (
       <div className="row center gap-3 wrap mb-3" style={{ fontSize: ".82rem" }}>
         <label className="mono" style={{ color: "var(--ink-soft)" }}>TEMPO</label>
         <input type="range" min="50" max="160" step="2" value={tempo}
@@ -613,6 +806,7 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
           </button>
         )}
       </div>
+      )}
 
       {/* Custom melody editor */}
       {showCustom && (
@@ -651,25 +845,27 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
       )}
 
       {/* Transport */}
+      {!isFree && (
       <div className="row center gap-3 wrap mb-4">
         <button className="btn btn-primary" onClick={() => start({ auto: true })}>▶ Demo (listen)</button>
         <button className="btn btn-teal" onClick={() => start({ auto: false })}>🎹 Play along</button>
         <button className="btn btn-ghost" onClick={reset}>↻ Reset</button>
       </div>
+      )}
 
       {/* Grand staff */}
-      <GrandStave
+      {isFree ? <FreePlayStave played={played} /> : <GrandStave
         rh={song.rh}
         lh={song.lh || []}
         chords={song.chords || []}
         totalBeats={totalBeats}
         rhPos={rhPos}
         lhPos={lhPos}
-      />
+      />}
 
       {/* Piano */}
-      <div style={{ overflowX: "auto", paddingBottom: 6 }}>
-        <div style={{
+      <div className="piano-keys-scroll" style={{ overflowX: "auto", paddingBottom: 6, paddingTop: isFree ? 48 : 0 }}>
+        <div className="piano-keys" style={{
           position: "relative",
           width: totalW,
           height: KH,
@@ -717,6 +913,16 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
               </div>
             ))}
           </div>
+          {pops.map(p => {
+            const wi = WHITE_KEYS.indexOf(p.note);
+            const bk = BLACK_KEY_INFO.find(([bn]) => bn === p.note);
+            const centre = wi >= 0 ? wi * KW + KW / 2 : (bk[1] + 1) * KW;
+            return (
+              <div key={p.id} aria-hidden="true"
+                   className={"free-key-pop" + (wi < 0 ? " black" : "")}
+                   style={{ left: centre }}>{letterOf(p.note)}</div>
+            );
+          })}
           {BLACK_KEY_INFO.map(([n, after]) => {
             const left = (after + 1) * KW - KW * 0.32;
             return (
@@ -758,7 +964,8 @@ function PianoPlayer({ topic, difficulty, onComplete }) {
       <div className="text-soft mt-4 center-text" style={{ fontSize: ".82rem", lineHeight: 1.5 }}>
         <strong>{song.name}.</strong> {song.note}. Play with mouse, touch or computer keyboard
         (<span className="mono">A row</span> = white keys C4–F5; <span className="mono">W E T Y U</span> / <span className="mono">O P</span> = black keys).
-        The next note is outlined in <span style={{ color: "var(--terracotta)" }}>orange</span>.
+        {!isFree && <> The next note is outlined in <span style={{ color: "var(--terracotta)" }}>orange</span>.</>}
+        {" "}Grand piano sound: Salamander Grand Piano (Alexander Holm, CC-BY 3.0).
       </div>
 
       {isStoneAge && (

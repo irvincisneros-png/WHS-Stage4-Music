@@ -646,6 +646,78 @@ p { margin: 0; text-wrap: pretty; }
   background: linear-gradient(180deg, var(--terracotta) 0%, var(--terracotta-d) 100%);
 }
 
+/* ---------- piano: free play + full screen ---------- */
+.free-key-pop {
+  position: absolute;
+  top: -44px;
+  z-index: 3;
+  min-width: 38px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--terracotta);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 3px 0 0 var(--terracotta-d);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: free-key-pop .95s var(--ease-out) forwards;
+}
+.free-key-pop.black { background: var(--espresso-2); box-shadow: 0 3px 0 0 #000; }
+@keyframes free-key-pop {
+  0%   { opacity: 0; transform: translate(-50%, 10px) scale(.7); }
+  14%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  24%  { transform: translate(-50%, 0) scale(1); }
+  72%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -16px) scale(1); }
+}
+.free-note-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 64px;
+  min-width: 240px;
+  padding: 6px 18px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+}
+.free-note-big {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 3rem;
+  line-height: 1.1;
+  color: var(--terracotta);
+  animation: free-note-in .2s var(--ease-out);
+}
+.free-note-sub { font-family: var(--font-mono); font-size: .8rem; color: var(--ink-soft); align-self: center; }
+@keyframes free-note-in { from { transform: scale(.6); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+
+.piano-fullscreen {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1000;
+  margin: 0 !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+  overflow: auto;
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  padding: 24px 32px !important;
+  transform: none !important;
+  will-change: auto;
+}
+.piano-fullscreen > * { flex-shrink: 0; }
+.piano-fullscreen .free-stave svg { height: 170px; }
+.piano-fullscreen .free-note-big { font-size: 4rem; }
+.piano-fullscreen .free-key-pop { font-size: 1.6rem; padding: 8px 12px; }
+body.piano-fs-lock { overflow: hidden; }
+
 /* ---------- drum pads ---------- */
 .pad {
   border-radius: 18px;
@@ -898,6 +970,8 @@ p { margin: 0; text-wrap: pretty; }
   .tilt:hover .tilt-layer-1, .tilt:hover .tilt-layer-2, .tilt:hover .tilt-layer-3 { transform: none !important; }
   .tilt::after { opacity: 0 !important; }
   .link:hover .link-bob { animation: none !important; }
+  /* key-name labels must stay visible, not snap to their faded end state */
+  .free-key-pop { animation: none !important; }
 }
 
 /* ---------- keyboard focus ---------- */
