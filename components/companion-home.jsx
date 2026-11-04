@@ -62,6 +62,17 @@ function CompanionHome({ year, progress, openTopic, openSpecial }) {
         </div>
       </section>
 
+      <section className="fn-home-card" aria-labelledby="fn-home-title">
+        <div>
+          <div className="eyebrow">New · piano</div>
+          <h2 id="fn-home-title">Falling Notes: learn a song</h2>
+          <p>Notes fall onto a keyboard. Play along on a real piano and the mic checks each note.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => openSpecial("falling")}>
+          Play Falling Notes <span aria-hidden="true">→</span>
+        </button>
+      </section>
+
       <section className="practice-cycle" aria-labelledby="practice-cycle-title">
         <div>
           <div className="eyebrow">A useful practice loop</div>

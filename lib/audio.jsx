@@ -426,5 +426,9 @@
     resume, playPiano, playPluck, playPluckHz, playAcoustic, playAcousticHz, playChord,
     playKick, playSnare, playHat, playClap, playTom, playCrash,
     ding, click, hzFromName, midiFromName,
+    // Used by Falling Notes: share the page's AudioContext and (for the
+    // ?testsource=synth self-test) listen to the page's own output.
+    getContext: () => ensure(),
+    tap: (node) => { ensure(); masterGain.connect(node); },
   };
 })();
