@@ -5,6 +5,10 @@
 (function () {
   const FC = window.FallingCore;
   const TEST_SYNTH = /[?&]testsource=synth(&|$)/.test(window.location.search);
+  // test-synth only: scale the test sound to mimic soft playing (e.g. ?testsource=synth&testgain=0.05)
+  // test-synth only: add steady room noise at this level (e.g. &testnoise=0.002)
+  const TEST_NOISE = parseFloat(new URLSearchParams(location.search).get("testnoise")) || 0;
+  const TEST_GAIN = Math.min(1, parseFloat(new URLSearchParams(location.search).get("testgain")) || 1);
   const LOOK_BARS = 2;        // how many bars you can see falling
   const LATENCY = 0.09;       // s between a key press and the detector noticing
   const TOL_S = 0.25;         // timing window (s) when not waiting
@@ -67,6 +71,12 @@
       }
       if (TEST_SYNTH) {
         if (!this.tapped && MA && MA.tap) { MA.tap(this.lo); MA.tap(this.hi); this.tapped = true; }
+        if (TEST_NOISE && !this.noise) {
+          const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * TEST_NOISE;
+          const n = ctx.createBufferSource(); n.buffer = buf; n.loop = true;
+          n.connect(this.lo); n.connect(this.hi); n.start(); this.noise = n;
+        }
       } else {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no-mic-api");
         this.stream = await navigator.mediaDevices.getUserMedia({
@@ -98,7 +108,7 @@
       const t = c.currentTime, out = c.createGain();
       out.gain.value = 1; out.connect(this.lo); out.connect(this.hi);
       const mon = c.createGain(); mon.gain.value = 0.4; out.connect(mon); mon.connect(c.destination);
-      const amp = 0.09 / Math.sqrt(midis.length);
+      const amp = 0.09 * TEST_GAIN / Math.sqrt(midis.length);
       midis.forEach((m) => {
         [1, 0.5, 0.33, 0.22].forEach((a, i) => {
           const o = c.createOscillator(); o.type = "sine"; o.frequency.value = FC.hz(m) * (i + 1);
