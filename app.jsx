@@ -7,7 +7,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "difficulty": "medium"
 }/*EDITMODE-END*/;
 
-const SPECIAL_ROUTES = new Set(["pretest", "posttest", "progress", "guitar", "piano"]);
+const SPECIAL_ROUTES = new Set(["pretest", "posttest", "progress", "guitar", "piano", "falling"]);
 
 function parseHash(hash, lastYear) {
   const h = (hash || "").replace(/^#\/?/, "");
@@ -227,6 +227,9 @@ function SignedInApp({ student, tweaks, setTweak }) {
           onBack={backToYear}
           onSwitch={(instrument) => openSpecial(instrument)}
         />
+      )}
+      {route.special === "falling" && (
+        <window.FallingNotes year={year} onBack={backToYear} />
       )}
 
       {!route.special && currentTopic && route.sectionIdx != null && (

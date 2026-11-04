@@ -402,6 +402,8 @@ const SONGS = {
   },
 };
 
+window.PIANO_SONGS = SONGS;
+
 /* Parse "E4 D4 C4/2 F#5 ..." (slash = duration in beats; default 1) */
 function parseCustom(text) {
   const tokens = text.trim().split(/[\s,]+/).filter(Boolean);

@@ -2215,6 +2215,14 @@ function PianoStudio({ year, onBack, onSwitch }) {
         </div>
       </header>
 
+      <div className="fn-home-card fn-studio-link">
+        <div>
+          <strong>Falling Notes: learn a song</strong>
+          <span className="text-soft"> Notes fall onto the keys. Play along and the mic listens.</span>
+        </div>
+        <a className="btn btn-primary" href={"#/" + year + "/falling"}>Open Falling Notes <span aria-hidden="true">→</span></a>
+      </div>
+
       <nav className="studio-jump-nav" aria-label="Piano lesson sections">
         <a href="#piano-warmup-title" onClick={(event) => scrollWithinStudio(event, "#piano-warmup-title")}>Keyboard map</a>
         <a href="#piano-reading-title" onClick={(event) => scrollWithinStudio(event, "#piano-reading-title")}>Sight reading</a>
