@@ -135,9 +135,12 @@
      `mag` = LINEAR magnitude spectrum (length fftSize/2), as made by an
      AnalyserNode with a Blackman window (dB -> 10^(dB/20)). */
   const SENS = {
-    low:    { thr: 0.62, snr: 5,   abs: 8e-4, rise: 1.45 },
-    medium: { thr: 0.50, snr: 3.5, abs: 3e-4, rise: 1.30 },
-    high:   { thr: 0.40, snr: 2.5, abs: 1.5e-4, rise: 1.22 },
+    /* `abs` is only a last-resort silence gate (about -90 to -100 dB). Notes are
+       judged against the room's own noise floor (snr), so soft playing and quiet
+       mics still count while background noise does not. */
+    low:    { thr: 0.62, snr: 5,   abs: 4e-5,   rise: 1.45 },
+    medium: { thr: 0.50, snr: 3.5, abs: 1.2e-5, rise: 1.30 },
+    high:   { thr: 0.40, snr: 2.5, abs: 4e-6,   rise: 1.22 },
   };
   const SEMI3 = Math.pow(2, 1 / 36); // 1/3 of a semitone
 
