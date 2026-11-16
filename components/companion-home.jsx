@@ -73,6 +73,19 @@ function CompanionHome({ year, progress, openTopic, openSpecial }) {
         </button>
       </section>
 
+      {year === "year8" && (
+        <section className="fn-home-card" aria-labelledby="ws-home-title">
+          <div>
+            <div className="eyebrow">Online worksheet · 8.2 Keys to Music</div>
+            <h2 id="ws-home-title">Major and Minor Chords</h2>
+            <p>Hear the difference, build triads on a keyboard, test your ears and choose chords to create a mood.</p>
+          </div>
+          <a className="btn btn-primary" href="worksheets/major-minor-chords.html" style={{ textDecoration: "none" }}>
+            Open worksheet <span aria-hidden="true">→</span>
+          </a>
+        </section>
+      )}
+
       <section className="practice-cycle" aria-labelledby="practice-cycle-title">
         <div>
           <div className="eyebrow">A useful practice loop</div>
