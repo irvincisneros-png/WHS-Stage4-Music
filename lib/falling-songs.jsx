@@ -2,7 +2,8 @@
    Same format as SONGS in interactives/piano.jsx: rh / lh = [[noteName, beats], ...]
    plus `level` and `beatsPerBar` (default 4). "R" is a rest.
    Written with a tiny helper: S("E5/2 D5 C5/.5") -> [["E5",2],["D5",1],["C5",0.5]]
-   (no "/n" means 1 beat). All pieces are simple student arrangements. */
+   (no "/n" means 1 beat). Join note names with "+" for a chord: "C4+E4+G4/2".
+   All pieces are simple student arrangements. */
 (function () {
   const S = (str) => str.trim().split(/\s+/).map((t) => {
     const [n, b] = t.split("/");
@@ -21,6 +22,9 @@
   const minA = "D5/1 G4/.5 A4/.5 B4/.5 C5/.5 D5/1 G4/1 G4/1 E5/1 C5/.5 D5/.5 E5/.5 F#5/.5 G5/1 G4/1 G4/1";
   const gsA = "C5/2 D5/1 E5/1.5 F5/.5 E5/1 D5/2 B4/1 G4/1.5 A4/.5 B4/1";
   const canonBass = "C3/2 G2/2 A2/2 E3/2 F2/2 C3/2 F2/2 G2/2";
+  // Last Christmas: chords and bass only (one chord per bar), no melody
+  const lcRh = "G3+B3+C4+E4/4 G3+B3+C4+E4/4 G3+A3+C4+E4/4 G3+A3+C4+E4/4 F3+A3+C4+E4/4 F3+A3+C4+E4/4 F3+G3+B3+E4/4 F3+G3+B3+D4/4";
+  const lcLh = "C3/4 C3/3 B2/1 A2/4 A2/2 B2/1 C3/1 D3/4 D3/4 G2/4 G2/4";
 
   window.FALLING_SONGS_EXTRA = {
     frere: {
@@ -86,6 +90,12 @@
       rh: S("R/2 E5/.5 D#5/.5 E5/.5 D#5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 C4/.5 E4/.5 A4/.5 B4/1.5 E4/.5 G#4/.5 B4/.5 "
         + "C5/1.5 E4/.5 E5/.5 D#5/.5 E5/.5 D#5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 C4/.5 E4/.5 A4/.5 B4/1.5 E4/.5 C5/.5 B4/.5 A4/3"),
       lh: S("R/3 R/3 A2/3 E3/3 A2/3 R/3 A2/3 E3/3 A2/3"),
+    },
+    lastChristmasChords: {
+      name: "Last Christmas (chords)", note: "Chords and bass only · Cmaj7, Am7, Dm9, G7 · no melody", bpm: 86, tag: "SEASONAL",
+      level: "Hard",
+      rh: S(rep(lcRh, 2) + " G3+B3+C4+E4/4"),
+      lh: S(rep(lcLh, 2) + " C3/4"),
     },
   };
 })();
