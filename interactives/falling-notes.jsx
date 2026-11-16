@@ -699,6 +699,7 @@
     sound: <g><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.6 7.6 0 0 1 0 11" /></g>,
     close: <path d="M6 6l12 12M18 6L6 18" />,
     search: <g><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></g>,
+    share: <g><path d="M12 15V3.5M8 7l4-3.5L16 7" /><path d="M8 11H6a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 18 11h-2" /></g>,
     upload: <path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />,
     mic: <g><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></g>,
   };
@@ -1331,6 +1332,33 @@
     </svg>
   );
 
+  /* iPhone: Safari never hides its bars for a web page, but the same page opened
+     from the home screen runs with no bars at all. This card says how. */
+  function InstallTip({ onClose }) {
+    const ref = React.useRef(null);
+    React.useEffect(() => {
+      const b = ref.current && ref.current.querySelector("button");
+      if (b) b.focus({ preventScroll: true });
+      const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+      document.addEventListener("keydown", onKey, true);
+      return () => document.removeEventListener("keydown", onKey, true);
+    }, []);
+    return (
+      <div className="fn-tip-layer" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fn-tip" role="dialog" aria-modal="true" aria-labelledby="fn-tip-title" ref={ref}>
+          <h3 id="fn-tip-title">Get the whole screen</h3>
+          <ol>
+            <li><span>Tap <Icon n="share" size={17} /> <strong>Share</strong> in Safari.</span></li>
+            <li><span>Choose <strong>Add to Home Screen</strong>.</span></li>
+            <li><span>Open <strong>Falling Notes</strong> from your home screen.</span></li>
+          </ol>
+          <p>Safari on an iPhone always keeps its bars. The home screen version has none.</p>
+          <button type="button" className="fn-cta" onClick={onClose}>Got it</button>
+        </div>
+      </div>
+    );
+  }
+
   function FallingNotes({ year, onBack, soundOn, onEnableSound }) {
     const [meta, setMeta] = React.useState(null);
     const [msg, setMsg] = React.useState("");
@@ -1344,6 +1372,10 @@
     const canFs = React.useMemo(FS_OK, []);
     const phone = React.useMemo(() => mq("(pointer: coarse)"), []);
     const setStage = (v) => { setStageState(v); saveSettings({ stage: v }); };
+    const [tip, setTip] = React.useState(false);
+    // a phone whose browser cannot go full screen (iPhone Safari) and is not yet opened from the home screen
+    const needsInstall = React.useMemo(() => phone && !canFs
+      && !(window.navigator.standalone === true || mq("(display-mode: standalone)") || mq("(display-mode: fullscreen)")), []);
 
     React.useEffect(() => () => { MIC.stop(); }, []);
     // the app owns the whole window: no page scrolling behind it
@@ -1371,6 +1403,15 @@
         setImmersive(false); unlock();
         if (fsElement()) { const x = document.exitFullscreen || document.webkitExitFullscreen; if (x) { const p = x.call(document); if (p && p.catch) p.catch(() => {}); } }
         return;
+      }
+      if (needsInstall) {
+        // already sideways: there is nothing left to turn, so just explain the home screen way
+        if (!mq(ROT_MQ)) { setTip(true); return; }
+        // upright: turn the app on its side, and explain the first time
+        if (!(window.Students && window.Students.readNS("fallingNotes.fsTip", false))) {
+          setTip(true);
+          if (window.Students) window.Students.writeNS("fallingNotes.fsTip", true);
+        }
       }
       setImmersive(true);
       const lock = () => { try { const p = screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape"); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } };
@@ -1516,6 +1557,7 @@
             </div>
           </div>
         )}
+        {tip ? <InstallTip onClose={() => setTip(false)} /> : null}
       </div>
     );
   }
