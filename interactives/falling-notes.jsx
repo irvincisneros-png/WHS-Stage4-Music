@@ -133,7 +133,7 @@
     const g = {
       meta, key: meta.key, name: meta.name, bpm: model.bpm, bpb: model.bpb,
       totalBeats: model.totalBeats, notes,
-      opts: { hands: "B", wait: true, speed: 1, metro: false, labels: true, otherHand: false, loop: false, loopStart: 1, loopEnd: model.totalBeats / model.bpb },
+      opts: { hands: "B", wait: true, speed: 1, metro: false, labels: true, otherHand: false, demo: false, loop: false, loopStart: 1, loopEnd: model.totalBeats / model.bpb },
       flash: {}, geo: null,
     };
     buildSets(g); resetAll(g);
@@ -193,6 +193,15 @@
     while (g.chordIdx < g.chords.length && g.chords[g.chordIdx].start <= nb + 1e-9) {
       const c = g.chords[g.chordIdx++];
       if (TEST_SYNTH) H.testPlay(c.midis, c.notes[0].dur / bps);
+      if (o.demo) {
+        // "Play it for me": the app plays every note, nothing is scored
+        c.notes.forEach((n) => {
+          if (n.status !== "pending") return;
+          n.status = "hit"; n.hitAt = now; g.flash[n.midi] = now;
+          H.playNote(n.midi, Math.max(0.3, n.dur / bps), 0.5);
+        });
+        continue;
+      }
       if (o.wait && !chordDone(c)) { nb = Math.max(g.beat, c.start); g.waiting = true; g.waitChord = c; g.arrivedMs = now; break; }
     }
     g.beat = nb;
@@ -205,7 +214,7 @@
     // other hand plays for the student
     while (g.otherIdx < g.other.length && g.other[g.otherIdx].start <= g.beat + 1e-9) {
       const n = g.other[g.otherIdx++];
-      if (o.otherHand) H.playNote(n.midi, Math.max(0.3, n.dur / bps));
+      if (o.otherHand || o.demo) H.playNote(n.midi, Math.max(0.3, n.dur / bps), o.demo ? 0.5 : 0.7);
     }
     if (g.waiting) return;
     // misses (free-play mode)
@@ -223,6 +232,7 @@
     } else if (g.beat >= g.totalBeats) {
       g.scored.forEach((n) => { if (n.status === "pending") n.status = "miss"; });
       g.playing = false; g.finished = true; g.beat = g.totalBeats;
+      if (o.demo) { g.result = null; return; }
       const c = counts(g), pct = pctOf(c);
       g.result = { pct, stars: FC.starsFor(pct), hits: c.hits, total: c.total };
       if (g.key !== "custom") saveBest(g.key, o.hands, o.wait, pct);
@@ -748,6 +758,7 @@
     const [labels, setLabels] = React.useState(saved.labels !== false);
     const [stage, setStage] = React.useState(saved.stage === "light" ? "light" : "dark");
     const [otherHand, setOtherHand] = React.useState(false);
+    const [demo, setDemo] = React.useState(false);
     const [loop, setLoop] = React.useState(false);
     const [loopStart, setLoopStart] = React.useState(1);
     const [loopEnd, setLoopEnd] = React.useState(totalBars);
@@ -769,11 +780,11 @@
 
     // push options into the engine; changing hands / wait starts the song over
     React.useEffect(() => {
-      const o = g.opts, structural = o.hands !== hands || o.wait !== wait;
-      Object.assign(o, { hands, wait, speed, metro, labels, otherHand, loop, loopStart, loopEnd });
+      const o = g.opts, structural = o.hands !== hands || o.wait !== wait || o.demo !== demo;
+      Object.assign(o, { hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd });
       if (structural) { buildSets(g); resetAll(g); detRef.current.reset(); }
       else if (!g.playing && g.needCount) { g.beat = homeBeat(g); reindex(g); }
-    }, [hands, wait, speed, metro, labels, otherHand, loop, loopStart, loopEnd]);
+    }, [hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd]);
     React.useEffect(() => {
       detRef.current.setSens(SENS_KEYS[sens]);
       if (window.Students) window.Students.writeNS("fallingNotes.settings", { sens, wait, metro, labels, stage });
@@ -781,7 +792,7 @@
 
     const hooks = React.useMemo(() => ({
       click: (acc) => { window.MusicAudio && window.MusicAudio.click(acc); },
-      playNote: (midi, dur) => { window.MusicAudio && window.MusicAudio.playPiano(FC.midiToName(midi), dur, 0.7); },
+      playNote: (midi, dur, vel) => { window.MusicAudio && window.MusicAudio.playPiano(FC.midiToName(midi), dur, vel || 0.7); },
       testPlay: (midis, dur) => { if (MIC.listening) MIC.synth(midis, dur); },
       finished: (res) => { if (res.stars === 3 && window.MusicAudio) window.MusicAudio.ding(true); },
     }), []);
@@ -801,7 +812,7 @@
 
     async function togglePlay() {
       if (g.playing) { pause(g); return; }
-      if (!MIC.listening) { const ok = await startListening(); if (!ok) return; }
+      if (!demo && !MIC.listening) { const ok = await startListening(); if (!ok) return; }
       window.MusicAudio && window.MusicAudio.resume();
       detRef.current.reset();
       prevBest.current = bestPct(g.key, hands, wait);
@@ -991,7 +1002,7 @@
     const setSpeedClamped = (v) => setSpeed(Math.round(Math.max(0.25, Math.min(1.5, v)) * 100) / 100);
 
     const expectedText = snap.expected && snap.expected.length ? snap.expected.join(" + ") : "";
-    let status = "Press Play, then play the notes you see.";
+    let status = demo ? "Press Play to hear the song." : "Press Play, then play the notes you see.";
     if (snap.finished) status = "Song finished.";
     else if (snap.count) status = "Get ready...";
     else if (snap.waiting) status = "Waiting for: " + expectedText;
@@ -1029,6 +1040,7 @@
               <Seg label="Hands" value={hands} onChange={setHands} options={[["R", "Right"], ["L", "Left"], ["B", "Both"]]} />
               <Chip label="Wait for me" checked={wait} onChange={setWait} />
               <Chip label="Metronome" checked={metro} onChange={setMetro} />
+              <Chip label="Play it for me" checked={demo} onChange={setDemo} />
             </div>
             <div className="fn-tb-end">
               <button type="button" className="fn-icon-btn" onClick={() => setStage(stage === "dark" ? "light" : "dark")}
@@ -1053,10 +1065,12 @@
               <div className="fn-head" style={{ left: pos * 100 + "%" }} />
             </div>
             <div className="fn-prog-end">
-              <span className="fn-score" aria-label="Notes right so far">
-                <strong>{snap.hits || 0}</strong><span> / {snap.total || 0}</span>
-                {acc != null ? <em>{acc}%</em> : null}
-              </span>
+              {demo ? null : (
+                <span className="fn-score" aria-label="Notes right so far">
+                  <strong>{snap.hits || 0}</strong><span> / {snap.total || 0}</span>
+                  {acc != null ? <em>{acc}%</em> : null}
+                </span>
+              )}
               {listening ? (
                 <span className="fn-mic on" style={{ "--lvl": lvl / 100 }}><i aria-hidden="true" /> Listening</span>
               ) : (
@@ -1081,7 +1095,7 @@
               </div>
             ) : null}
             {snap.count && snap.countN ? <div className="fn-count" aria-hidden="true"><span key={snap.countN}>{snap.countN}</span></div> : null}
-            {atStart ? <div className="fn-idle"><span>Press Play to start</span></div> : null}
+            {atStart ? <div className="fn-idle"><span>{demo ? "Press Play to hear the song" : "Press Play to start"}</span></div> : null}
             {snap.finished && snap.result ? (
               <div className="fn-result" role="dialog" aria-label="Your result" ref={resultRef}>
                 <div className="fn-result-card">
