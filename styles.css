@@ -2648,6 +2648,8 @@ button.tab-cell.active::before { background: var(--terracotta); }
 .fn-page { padding-bottom: 40px; }
 .fn-error { color: #b42318; font-weight: 600; margin: 8px 0; }
 [data-theme="dark"] .fn-error { color: #ff9b8f; }
+.fn-micnote { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--butter) 30%, var(--bg-2)); border: 1.5px solid color-mix(in srgb, var(--butter-d) 55%, var(--border)); color: var(--ink); font-size: .92rem; font-weight: 600; line-height: 1.35; }
+.fn-micnote svg { flex: none; margin-top: 2px; }
 .fn-page button:focus-visible, .fn-page input:focus-visible, .fn-page canvas:focus-visible { outline: 3px solid var(--terracotta); outline-offset: 2px; }
 
 /* ----- shared bits ----- */
@@ -2774,23 +2776,37 @@ button.tab-cell.active::before { background: var(--terracotta); }
 button.fn-mic { cursor: pointer; background: var(--teal); border-color: var(--teal-d); color: #fff; box-shadow: 0 3px 0 0 var(--teal-d); transition: transform .15s; }
 button.fn-mic:hover { transform: translateY(-1px); }
 button.fn-mic i { background: #fff; }
+.fn-mic.demo { background: color-mix(in srgb, var(--terracotta) 12%, var(--bg)); border-color: color-mix(in srgb, var(--terracotta) 45%, var(--border)); color: var(--terracotta); }
 .fn-heard { font: 700 .8rem var(--font-mono); color: var(--ink-soft); animation: fn-heard 1s ease-out forwards; }
 
 /* ----- stage ----- */
 .fn-stage { position: relative; width: 100%; overflow: hidden; border-radius: var(--radius-sm); background: #0e1222; box-shadow: 0 0 0 1.5px var(--border), var(--shadow-amb-lg); }
 .fn-player[data-stage="light"] .fn-stage { background: #f1efe8; }
 [data-theme="dark"] .fn-player[data-stage="light"] .fn-stage { background: #dedbd2; }
-.fn-stage canvas { display: block; touch-action: manipulation; }
+.fn-stage canvas { display: block; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.fn-stage canvas[data-keys="true"] { cursor: pointer; }
 .fn-floatwrap { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; max-width: calc(100% - 24px); z-index: 2; }
-.fn-waitchip, .fn-idle span {
+.fn-waitchip {
   display: inline-flex; align-items: center; gap: 9px; padding: 8px 16px; border-radius: 999px; white-space: nowrap;
   background: rgba(18,23,44,.82); color: #fff; border: 1px solid rgba(255,255,255,.16); font: 700 .95rem var(--font-display);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 20px -8px rgba(0,0,0,.5);
 }
-.fn-player[data-stage="light"] .fn-waitchip, .fn-player[data-stage="light"] .fn-idle span { background: rgba(255,255,255,.9); color: #16161a; border-color: rgba(30,40,70,.14); }
+.fn-player[data-stage="light"] .fn-waitchip { background: rgba(255,255,255,.9); color: #16161a; border-color: rgba(30,40,70,.14); }
 .fn-waitchip i { width: 9px; height: 9px; border-radius: 50%; background: #5b8cff; animation: fn-dot 1.2s ease-in-out infinite; }
 .fn-skip { pointer-events: auto; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: rgba(18,23,44,.7); color: #fff; font: 600 .85rem var(--font-body); cursor: pointer; }
-.fn-idle { position: absolute; left: 0; right: 0; top: 38%; display: flex; justify-content: center; pointer-events: none; }
+.fn-idle { position: absolute; left: 0; right: 0; top: 34%; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 12px; padding: 0 16px; pointer-events: none; z-index: 2; }
+.fn-start {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 24px 0 20px; border: 0; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  background: linear-gradient(180deg, #6f9bff, #2762e0); color: #fff; font: 700 1.05rem var(--font-display);
+  box-shadow: 0 12px 28px -10px rgba(39,98,224,.85), inset 0 1px 0 rgba(255,255,255,.35); transition: transform .15s var(--ease-spring), box-shadow .2s;
+}
+.fn-start:hover { transform: translateY(-2px) scale(1.03); }
+.fn-start:active { transform: scale(.96); }
+.fn-start.ghost { background: rgba(18,23,44,.72); border: 1px solid rgba(255,255,255,.26); box-shadow: 0 8px 22px -10px rgba(0,0,0,.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.fn-start.ghost:hover { border-color: rgba(255,255,255,.55); }
+.fn-player[data-stage="light"] .fn-start.ghost { background: rgba(255,255,255,.92); color: #16161a; border-color: rgba(30,40,70,.18); box-shadow: 0 8px 22px -12px rgba(25,35,70,.45); }
+.fn-page .fn-stage .fn-start:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.fn-page .fn-player[data-stage="light"] .fn-start:focus-visible { outline-color: #16161a; }
 .fn-count { position: absolute; inset: 0 0 22% 0; display: grid; place-items: center; pointer-events: none; z-index: 2; }
 .fn-count span { font: 800 clamp(96px, 24vw, 190px)/1 var(--font-display); color: #fff; text-shadow: 0 0 40px rgba(91,140,255,.8), 0 6px 30px rgba(0,0,0,.35); animation: fn-count .95s ease-out forwards; }
 .fn-player[data-stage="light"] .fn-count span { color: #16161a; text-shadow: 0 6px 30px rgba(39,98,224,.35); }
@@ -2807,6 +2823,8 @@ button.fn-mic i { background: #fff; }
 .fn-pct small { font-size: .45em; margin-left: 2px; color: var(--ink-soft); }
 .fn-result-card p { margin: 0 0 6px; color: var(--ink-soft); font-weight: 600; }
 .fn-newbest { margin: 2px 0 6px; padding: 5px 14px; border-radius: 99px; background: #f2b823; color: #2a1d00; font: 800 .8rem var(--font-mono); letter-spacing: .05em; text-transform: uppercase; animation: fn-card-in .5s .9s var(--ease-spring) backwards; }
+.fn-turn { width: min(340px, 100%); padding: 24px 22px 20px; }
+.fn-turn-icon { display: inline-flex; align-items: center; justify-content: center; width: 60px; height: 60px; margin-bottom: 6px; border-radius: 50%; color: #fff; background: linear-gradient(180deg, #6f9bff, #2762e0); box-shadow: 0 10px 22px -10px rgba(39,98,224,.9); }
 .fn-result-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
 
 /* ----- settings drawer ----- */
@@ -2860,9 +2878,12 @@ button.fn-mic i { background: #fff; }
 @media (max-width: 640px) {
   .fn-filters { display: flex; width: 100%; }
   .fn-filters button { flex: 1; justify-content: center; padding: 0 6px; gap: 6px; }
-  .fn-toolbar { padding: 10px; gap: 10px; }
-  .fn-title h2 { font-size: 1.05rem; max-width: 16ch; }
-  .fn-tb-id { gap: 8px; }
+  .fn-toolbar { padding: 10px; gap: 10px; grid-template-columns: 1fr auto; grid-template-areas: "back end" "title title" "main main"; }
+  .fn-tb-id { display: contents; }
+  .fn-back { grid-area: back; justify-self: start; }
+  .fn-title { grid-area: title; padding: 0 4px; }
+  .fn-title h2 { font-size: 1.2rem; max-width: none; white-space: normal; }
+  .fn-title span { white-space: normal; }
   .fn-back { padding: 0 12px 0 8px; }
   .fn-tb-end { gap: 6px; }
   .fn-play { width: 52px; height: 52px; }
@@ -2875,11 +2896,13 @@ button.fn-mic i { background: #fff; }
   .fn-drawer { width: 100%; height: auto; max-height: 88vh; max-height: 88dvh; border-left: 0; border-top: 1.5px solid var(--border); border-radius: 24px 24px 0 0; animation-name: fn-slide-up; box-shadow: 0 -20px 50px -20px rgba(0,0,0,.5); }
   .fn-home-card .btn { width: 100%; justify-content: center; }
   .fn-result-card .fn-stars svg { width: 46px; height: 46px; }
+  .fn-idle { top: 30%; }
+  .fn-start { min-height: 48px; padding: 0 20px 0 16px; font-size: 1rem; }
 }
 @media (pointer: coarse) { button.fn-mic { min-height: 44px; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .fn-card, .fn-play, .fn-fill, .fn-head, .fn-switch-track, .fn-switch-track span, .fn-mic.on i { transition: none !important; }
+  .fn-card, .fn-play, .fn-start, .fn-fill, .fn-head, .fn-switch-track, .fn-switch-track span, .fn-mic.on i { transition: none !important; }
   .fn-card:hover, .fn-card:focus-visible { transform: none; }
   .fn-heard, .fn-count span, .fn-waitchip i, .fn-result, .fn-result-card, .fn-newbest, .fn-ok, .fn-backdrop, .fn-drawer,
   .fn-result-card .fn-stars.pop .on { animation: none !important; }
