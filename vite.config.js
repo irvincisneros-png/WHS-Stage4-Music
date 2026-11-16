@@ -23,6 +23,7 @@ const sourceFiles = [
   "interactives/drum-pads.jsx",
   "interactives/piano.jsx",
   "lib/falling-songs.jsx",
+  "lib/falling-midi-songs.jsx",
   "lib/falling-core.jsx",
   "interactives/falling-notes.jsx",
   "interactives/instrument-studios.jsx",

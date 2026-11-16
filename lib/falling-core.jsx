@@ -75,6 +75,7 @@
 
     const tracks = [];       // each: array of {midi, startTick, endTick}
     let tempo = null, tempoTick = Infinity, sig = null;
+    const tempos = [];       // every tempo change: [tick, microseconds per beat]
     for (let t = 0; t < ntrks && p + 8 <= d.length; t++) {
       const id = tag(), len = u32();
       const end = Math.min(d.length, p + len);
@@ -89,6 +90,7 @@
           const type = u8(), l = vlq();
           if (type === 0x51 && l === 3) {
             const us = (d[p] << 16) | (d[p + 1] << 8) | d[p + 2];
+            if (us > 0) tempos.push([tick, us]);
             if (us > 0 && tick < tempoTick) { tempo = us; tempoTick = tick; }
           } else if (type === 0x58 && l >= 2 && !sig) {
             sig = { num: d[p], den: Math.pow(2, d[p + 1]) };
@@ -117,10 +119,26 @@
     }
     if (!tracks.length) throw bad("I could not find any notes in this MIDI file.");
 
+    /* A file that speeds up or slows down keeps its real timing: every note is
+       placed by the clock, then measured in beats of the first tempo. */
+    let beatOf = (tk) => tk / ppq;
+    const firstUs = tempo || 500000;
+    tempos.sort((x, y) => x[0] - y[0]);
+    if (tempos.some((t) => t[1] !== firstUs)) {
+      const map = [[0, 0, tempos.length && tempos[0][0] === 0 ? tempos[0][1] : 500000]]; // [tick, time so far, tempo]
+      tempos.forEach(([tk, us]) => {
+        const last = map[map.length - 1];
+        if (tk === last[0]) { last[2] = us; return; }
+        map.push([tk, last[1] + (tk - last[0]) * last[2], us]);
+      });
+      beatOf = (tk) => {
+        let i = map.length - 1;
+        while (i > 0 && map[i][0] > tk) i--;
+        return (map[i][1] + (tk - map[i][0]) * map[i][2]) / (firstUs * ppq);
+      };
+    }
     const events = [];
-    const push = (n, hand) => events.push({
-      midi: n.midi, start: n.startTick / ppq, dur: Math.max(0.05, (n.endTick - n.startTick) / ppq), hand,
-    });
+    const push = (n, hand) => { const st = beatOf(n.startTick); events.push({ midi: n.midi, start: st, dur: Math.max(0.05, beatOf(n.endTick) - st), hand }); };
     if (tracks.length === 2) {
       tracks[0].forEach((n) => push(n, "R"));
       tracks[1].forEach((n) => push(n, "L"));
@@ -130,6 +148,11 @@
     events.sort((a, b) => a.start - b.start || a.midi - b.midi);
     const bpb = sig ? Math.max(1, (sig.num * 4) / sig.den) : 4;
     const bpm = Math.min(240, Math.max(30, Math.round(60000000 / (tempo || 500000))));
+    // a long silence before the first note is cut, in whole bars so the bar lines still fit
+    if (events.length && events[0].start >= 2 * bpb) {
+      const cut = (Math.floor(events[0].start / bpb) - 1) * bpb;
+      events.forEach((e) => { e.start -= cut; });
+    }
     const end = events.reduce((m, e) => Math.max(m, e.start + e.dur), 0);
     return { events, bpb, bpm, totalBeats: Math.max(1, Math.ceil(end / bpb - 1e-9)) * bpb, format, ppq };
   }
@@ -145,7 +168,8 @@
     medium: { thr: 0.50, snr: 3.5, abs: 1.2e-5, rise: 1.30 },
     high:   { thr: 0.40, snr: 2.5, abs: 4e-6,   rise: 1.22 },
   };
-  const SEMI3 = Math.pow(2, 1 / 36); // 1/3 of a semitone
+  const HI_BELOW = 72;   // notes below this (C5) are read from the finer spectrum
+  const TUNE_CENTS = 45; // how far off pitch a piano may be and still count
 
   function dbToMag(db, out) {
     out = out || new Float32Array(db.length);
@@ -153,13 +177,43 @@
     return out;
   }
 
+  /* The strongest TRUE peak near f: a bin that is higher than both bins beside it.
+     A real string makes a peak. The sloping skirt of a louder note next door does
+     not, so a loud neighbour can no longer hide a note or pass for one.
+     The search is TUNE_CENTS wide, but never so wide that it reaches into the
+     band of the next semitone (low notes are only a few bins apart). */
   function peakNear(mag, binHz, f) {
-    let i0 = Math.floor(f / SEMI3 / binHz), i1 = Math.ceil(f * SEMI3 / binHz);
-    if (i1 >= mag.length) return 0;
+    const c = f / binHz;
+    const hw = Math.max(0.5, Math.min(c * (Math.pow(2, TUNE_CENTS / 1200) - 1), (c * 0.0595 - 1) / 2));
+    let i0 = Math.ceil(c - hw), i1 = Math.floor(c + hw);
+    if (i1 < i0) i0 = i1 = Math.round(c);
     if (i0 < 1) i0 = 1;
+    if (i1 >= mag.length - 1) return 0;
     let m = 0;
-    for (let i = i0; i <= i1; i++) if (mag[i] > m) m = mag[i];
+    for (let i = i0; i <= i1; i++) { const v = mag[i]; if (v > m && v >= mag[i - 1] && v >= mag[i + 1]) m = v; }
     return m;
+  }
+  /* the typical level just around f (median of the bins within 2.5 semitones).
+     Right after a loud note starts, its energy is smeared across the spectrum for
+     a moment; a real note has to stand clear of that smear as well. */
+  const LF = new Float32Array(512);
+  function localFloor(mag, binHz, f) {
+    const i0 = Math.max(1, Math.floor(f * 0.8656 / binHz)), i1 = Math.min(mag.length - 1, Math.ceil(f * 1.1553 / binHz));
+    const step = Math.max(1, Math.ceil((i1 - i0 + 1) / LF.length));
+    let n = 0;
+    for (let i = i0; i <= i1; i += step) LF[n++] = mag[i];
+    if (n < 5) return 0;
+    const a = LF.subarray(0, n); a.sort();
+    return a[n >> 1];
+  }
+  /* is f one of the overtones of a note we are waiting for (other than `self`)? */
+  function partialOfExpected(f, expected, self) {
+    for (const e of expected) {
+      if (e === self) continue;
+      const ratio = f / hz(e), j = Math.round(ratio);
+      if (j >= 1 && j <= 8 && Math.abs(1200 * Math.log2(ratio / j)) < 40) return true;
+    }
+    return false;
   }
 
   function noiseFloor(mag, sr, fftSize) {
@@ -188,13 +242,17 @@
       const own = peakNear(mag, binHz, f);
       if (h === 1) own1 = own;
       if (h <= 3) strength += own;
+      // the semitone either side must be quieter, unless that sound belongs to
+      // another note of the chord (the note itself or one of its overtones)
       let nb = 0;
-      if (!expected.has(midi - 1)) nb = Math.max(nb, peakNear(mag, binHz, hz(midi - 1) * h));
-      if (!expected.has(midi + 1)) nb = Math.max(nb, peakNear(mag, binHz, hz(midi + 1) * h));
+      const fa = hz(midi - 1) * h, fb = hz(midi + 1) * h;
+      if (!partialOfExpected(fa, expected, midi)) nb = Math.max(nb, peakNear(mag, binHz, fa));
+      if (!partialOfExpected(fb, expected, midi)) nb = Math.max(nb, peakNear(mag, binHz, fb));
       let e = 0;
-      if (own > fl * P.snr) {
+      const base = Math.max(fl, localFloor(mag, binHz, f));
+      if (own > base * P.snr) {
         if (own > P.abs) anyAbs = true;
-        e = Math.min(1, Math.max(0, (20 * Math.log10(own / Math.max(nb, fl))) / 10));
+        e = Math.min(1, Math.max(0, (20 * Math.log10(own / Math.max(nb, base))) / 10));
       }
       if (h === 1) e1 = e;
       num += W[h - 1] * e; den += W[h - 1];
@@ -210,7 +268,7 @@
       const sub = peakNear(mag, binHz, hz(midi - 12));
       if (sub > own1 * 1.5 && sub > fl * P.snr) score *= expected.has(midi - 12) ? 0.6 : 0.3;
     }
-    return { score, strength };
+    return { score, strength, fund: e1 };
   }
 
   function scoreNotes(mag, sr, fftSize, midis, sens) {
@@ -221,18 +279,22 @@
 
   /* ---------- onset-aware detector ---------- */
   class Detector {
-    constructor(sens) { this.setSens(sens || "medium"); this.st = new Map(); }
+    constructor(sens) { this.setSens(sens || "medium"); this.st = new Map(); this.acc = []; }
     setSens(s) { this.sensKey = s; this.P = SENS[s] || SENS.medium; }
-    reset() { this.st.clear(); }
-    /* specLo / specHi: {mag, sr, fftSize}. specHi (16384) is used for midi < 60.
+    reset() { this.st.clear(); this.acc = []; }
+    /* specLo / specHi: {mag, sr, fftSize}. specHi (16384) is used for midi < HI_BELOW.
        Returns [{midi, time}] for newly accepted notes (time = onset, in `now` units, ms). */
     update(specLo, specHi, midis, now, ignore) {
       const P = this.P, out = [];
       const set = new Set(midis);
       for (const k of Array.from(this.st.keys())) if (!set.has(k)) this.st.delete(k);
       const floors = new Map();
+      // chord help: once two notes of a chord are clearly heard, another note passes a
+      // little more easily, but only if its own fundamental is really there
+      while (this.acc.length && now - this.acc[0] > 450) this.acc.shift();
+      const easy = this.acc.length >= 2;
       midis.forEach((m) => {
-        const spec = (m < 60 && specHi) ? specHi : specLo;
+        const spec = (m < HI_BELOW && specHi) ? specHi : specLo;
         if (!floors.has(spec)) floors.set(spec, noiseFloor(spec.mag, spec.sr, spec.fftSize));
         const floor = floors.get(spec);
         const r = scoreNote(spec.mag, spec.sr, spec.fftSize, m, floor, set, P);
@@ -254,9 +316,11 @@
             s.onsetAt = now; s.armed = false; s.peak = r.strength;
           }
         }
-        s.streak = (!ignore && r.score >= P.thr) ? s.streak + 1 : 0;
+        const ok = r.score >= P.thr || (easy && r.fund >= 0.6 && r.score >= P.thr * 0.6);
+        s.streak = (!ignore && ok) ? s.streak + 1 : 0;
         if (s.streak >= 2 && now - s.onsetAt <= 350 && s.onsetAt > s.lastOnset) {
           s.lastOnset = s.onsetAt;
+          this.acc.push(now);
           out.push({ midi: m, time: s.onsetAt });
         }
       });
@@ -294,7 +358,7 @@
   function starsFor(pct) { return pct >= 95 ? 3 : pct >= 80 ? 2 : pct >= 60 ? 1 : 0; }
 
   window.FallingCore = {
-    nameToMidi, midiToName, midiToLetter, hz, hzToMidiFloat,
+    nameToMidi, midiToName, midiToLetter, hz, hzToMidiFloat, HI_BELOW,
     songToEvents, groupChords, parseMidi,
     SENS, dbToMag, noiseFloor, scoreNote, scoreNotes, Detector, yinPitch, rms, starsFor,
   };

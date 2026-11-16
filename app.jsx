@@ -172,6 +172,18 @@ function SignedInApp({ student, tweaks, setTweak }) {
     requestAnimationFrame(() => main.focus({ preventScroll: true }));
   }, [year, route.special, route.topicId, route.sectionIdx]);
 
+  // Falling Notes is its own full-window app: no site header or footer around it
+  if (route.special === "falling") {
+    return (
+      <window.FallingNotes
+        year={year}
+        onBack={backToYear}
+        soundOn={tweaks.sound}
+        onEnableSound={() => setTweak("sound", true)}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <a className="skip-link" href="#main-content" onClick={(event) => {
@@ -227,9 +239,6 @@ function SignedInApp({ student, tweaks, setTweak }) {
           onBack={backToYear}
           onSwitch={(instrument) => openSpecial(instrument)}
         />
-      )}
-      {route.special === "falling" && (
-        <window.FallingNotes year={year} onBack={backToYear} />
       )}
 
       {!route.special && currentTopic && route.sectionIdx != null && (
