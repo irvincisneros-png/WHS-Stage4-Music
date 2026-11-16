@@ -84,13 +84,6 @@
         + "F4/.5 A4/.5 C5/.5 A4/.5 E4/.5 G4/.5 C5/.5 G4/.5 F4/.5 A4/.5 C5/.5 A4/.5 G4/.5 B4/.5 D5/.5 B4/.5 C5/4"),
       lh: S(rep(canonBass, 3) + " C3/4"),
     },
-    elise: {
-      name: "Für Elise (opening)", note: "Beethoven · public domain · first section", bpm: 100, tag: "CLASSICAL",
-      level: "Hard", beatsPerBar: 3,
-      rh: S("R/2 E5/.5 D#5/.5 E5/.5 D#5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 C4/.5 E4/.5 A4/.5 B4/1.5 E4/.5 G#4/.5 B4/.5 "
-        + "C5/1.5 E4/.5 E5/.5 D#5/.5 E5/.5 D#5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 C4/.5 E4/.5 A4/.5 B4/1.5 E4/.5 C5/.5 B4/.5 A4/3"),
-      lh: S("R/3 R/3 A2/3 E3/3 A2/3 R/3 A2/3 E3/3 A2/3"),
-    },
     lastChristmasChords: {
       name: "Last Christmas (chords)", note: "Chords and bass only · Cmaj7, Am7, Dm9, G7 · no melody", bpm: 86, tag: "SEASONAL",
       level: "Hard",

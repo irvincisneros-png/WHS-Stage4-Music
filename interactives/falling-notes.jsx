@@ -707,11 +707,15 @@
   const KEYSIG_STEP = { sharp: [38, 35, 39, 36, 33, 37, 34], flat: [34, 37, 33, 36, 32, 35, 31] }; // treble; bass is 14 lower
   /* note values in beats (a beat = a crotchet): [beats, head, dots, flags] */
   const VALUES = [[6, "w", 1, 0], [4, "w", 0, 0], [3, "h", 1, 0], [2, "h", 0, 0], [1.5, "q", 1, 0], [1, "q", 0, 0],
-    [0.75, "q", 1, 1], [0.5, "q", 0, 1], [0.375, "q", 1, 2], [0.25, "q", 0, 2], [0.125, "q", 0, 3]]
-    .map((v, i) => ({ id: i, beats: v[0], head: v[1], dots: v[2], flags: v[3] }));
-  function noteValue(beats) {
+    [0.75, "q", 1, 1], [0.5, "q", 0, 1], [0.375, "q", 1, 2], [0.25, "q", 0, 2], [0.125, "q", 0, 3],
+    [2 / 3, "q", 0, 0, 3], [1 / 3, "q", 0, 1, 3], [1 / 6, "q", 0, 2, 3]] // triplets: three in the time of two
+    .map((v, i) => ({ id: i, beats: v[0], head: v[1], dots: v[2], flags: v[3], trip: !!v[4] }));
+  function noteValue(beats, triplet) {
     let best = VALUES[0], bd = 1e9;
-    VALUES.forEach((v) => { const d = Math.abs(Math.log2(Math.max(0.01, beats) / v.beats)); if (d < bd) { bd = d; best = v; } });
+    VALUES.forEach((v) => {
+      if (v.trip && !triplet) return; // triplet values only for notes that really sit on a triplet grid
+      const d = Math.abs(Math.log2(Math.max(0.01, beats) / v.beats)); if (d < bd) { bd = d; best = v; }
+    });
     return best;
   }
   /* the key signature that fits the song best: -6 (six flats) to 6 (six sharps) */
@@ -753,11 +757,13 @@
   /* work out, once per song, how every note is written */
   function buildStave(g) {
     const notes = g.notes, bpb = g.bpb;
+    const sig = g.sig || [bpb, 4];
+    const q = bpb / ((sig[0] * 4) / sig[1]); // the song's beats per crotchet: 1 as a rule, 2 when it counts in quavers
     const k = guessKey(notes), keyAlt = new Array(7).fill(0);
     (k > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, Math.abs(k)).forEach((L) => { keyAlt[L] = k > 0 ? 1 : -1; });
     const hasR = notes.some((n) => n.hand === "R"), hasL = notes.some((n) => n.hand === "L");
     const mode = hasR && hasL ? "both" : hasL ? "bass" : "treble";
-    // the next note in the same hand tells us the written length better than how long a key was held
+    // when a key was let go a little early, the next note in the same hand tells us the written length
     const nextStart = new Map();
     ["R", "L"].forEach((h) => {
       const hs = notes.filter((n) => n.hand === h);
@@ -765,7 +771,7 @@
       for (let i = 0; i < hs.length; i++) { while (j < hs.length && hs[j].start <= hs[i].start + 0.03) j++; if (j < hs.length) nextStart.set(hs[i], hs[j].start); }
     });
     const inBar = {}, groups = new Map(), items = [];
-    let minBeats = 4;
+    let minBeats = 4 * q;
     notes.forEach((n) => {
       const sp = spell(n.midi, keyAlt, k);
       let staff = mode === "both" ? (n.hand === "R" ? "treble" : "bass") : mode;
@@ -782,8 +788,13 @@
       const acc = sp.alt === inForce ? null : sp.alt;
       inBar[key] = sp.alt;
       const gap = nextStart.has(n) ? nextStart.get(n) - n.start : 0;
-      const val = noteValue(gap > 0 && gap <= 4.5 && n.dur >= 0.55 * gap ? gap : n.dur);
-      if (val.beats < minBeats) minBeats = val.beats;
+      // a length that is already a proper note value is kept (the gap after it is a rest);
+      // a slightly short one, as people really play, is written up to the next note
+      const own = n.dur / q, from = n.start / q, to = from + own, on = (x, d) => Math.abs(x * d - Math.round(x * d)) < 0.04;
+      const triplet = (!on(from, 8) || !on(to, 8)) && on(from, 12) && on(to, 12); // on the grid of thirds, off the ordinary one
+      const proper = VALUES.some((v) => (!v.trip || triplet) && Math.abs(own / v.beats - 1) < 0.07);
+      const val = noteValue(!proper && gap > 0 && gap <= 4.5 * q && n.dur >= 0.55 * gap ? gap / q : own, triplet);
+      if (val.beats * q < minBeats) minBeats = val.beats * q;
       const gk = staff + "|" + Math.round(n.start * 32) + "|" + val.id;
       let it = groups.get(gk);
       if (!it) { it = { start: n.start, staff, val, heads: [] }; groups.set(gk, it); items.push(it); }
@@ -795,9 +806,8 @@
       it.up = (mid - lo) > (hi - mid); // stem goes up when the notes sit low on the stave
     });
     items.sort((a, b) => a.start - b.start);
-    const sig = g.sig || [bpb, 4];
-    const compound = sig[1] === 8 && sig[0] >= 6 && sig[0] % 3 === 0; // 6/8, 9/8, 12/8: the beat is three quavers
-    const unit = compound ? 1.5 : 1;                                  // one beat, counted in crotchets
+    const compound = sig[1] === 8 && sig[0] % 3 === 0; // 3/8, 6/8, 9/8, 12/8: quavers go in threes
+    const unit = (compound ? 1.5 : 1) * q;              // one beam group, in the song's beats
     const staves = mode === "both" ? ["treble", "bass"] : [mode];
     const grid = (t) => Math.round(t * 8) / 8;
 
@@ -818,7 +828,7 @@
       list.forEach((it) => {
         const ok = it.val.flags > 0 && together.get(Math.round(it.start * 32)) === 1, prev = run[run.length - 1];
         if (prev && ok && Math.floor(grid(it.start) / unit + 1e-6) === Math.floor(grid(prev.start) / unit + 1e-6)
-          && Math.abs(it.start - (prev.start + prev.val.beats)) < 0.09) run.push(it);
+          && Math.abs(it.start - (prev.start + prev.val.beats * q)) < 0.09) run.push(it);
         else { flush(); if (ok) run.push(it); }
       });
       flush();
@@ -837,7 +847,7 @@
     const freeTime = notes.length > 0 && onGrid / notes.length < 0.85;
     const rests = [], bars = Math.round(g.totalBeats / bpb), sizes = compound ? [3, 1.5, 0.5, 0.25] : [4, 2, 1, 0.5, 0.25];
     staves.forEach((st) => {
-      const spans = items.filter((it) => it.staff === st).map((it) => { const a = Math.round(it.start * 4) / 4; return [a, a + it.val.beats]; }).sort((x, y) => x[0] - y[0]);
+      const spans = items.filter((it) => it.staff === st).map((it) => { const a = Math.round(it.start * 4) / 4; return [a, a + it.val.beats * q]; }).sort((x, y) => x[0] - y[0]);
       let si = 0;
       for (let b = 0; b < bars; b++) {
         const b0 = b * bpb, b1 = b0 + bpb, gaps = [];
@@ -848,15 +858,15 @@
           p = Math.max(p, Math.min(b1, spans[i][1]));
         }
         if (p < b1 - 0.01) gaps.push([p, b1]);
-        if (gaps.length === 1 && gaps[0][0] <= b0 + 0.01 && gaps[0][1] >= b1 - 0.01) { rests.push({ staff: st, start: b0, beats: bpb, bar: true }); continue; }
+        if (gaps.length === 1 && gaps[0][0] <= b0 + 0.01 && gaps[0][1] >= b1 - 0.01) { rests.push({ staff: st, start: b0, beats: 4, len: bpb, bar: true }); continue; }
         gaps.forEach(([a, z]) => {
-          let q = a;
-          while (z - q > 0.2) {
-            let v = 0;
-            for (const o of sizes) { const r = (q - b0) / o; if (o <= z - q + 0.01 && Math.abs(r - Math.round(r)) < 0.02) { v = o; break; } }
+          let at = a;
+          while (z - at > 0.2 * q) {
+            let v = 0; // the rest's value in crotchets; it lasts v * q of the song's beats
+            for (const o of sizes) { const r = (at - b0) / (o * q); if (o * q <= z - at + 0.01 && Math.abs(r - Math.round(r)) < 0.02) { v = o; break; } }
             if (!v) break;
-            if (!(freeTime && v < 1)) rests.push({ staff: st, start: q, beats: v, bar: false });
-            q += v;
+            if (!(freeTime && v < 1)) rests.push({ staff: st, start: at, beats: v, len: v * q, bar: false });
+            at += v * q;
           }
         });
       }
@@ -1037,10 +1047,18 @@
           const its = bm.items, last = its.length - 1;
           c.globalAlpha = (its.every((q) => q.heads.every((h) => gone(h.n))) ? 0.38 : 1) * past;
           beamBar(bm, bm.xs[0], bm.xs[last], 0);
-          for (let q = 0; q <= last; q++) {
-            if (its[q].val.flags < 2) continue; // semiquavers get a second beam
-            if (q < last && its[q + 1].val.flags >= 2) beamBar(bm, bm.xs[q], bm.xs[q + 1], 0.78 * s);
-            else if (!(q > 0 && its[q - 1].val.flags >= 2)) { const dir = q < last ? 1 : -1; beamBar(bm, Math.min(bm.xs[q], bm.xs[q] + dir * 0.95 * s), Math.max(bm.xs[q], bm.xs[q] + dir * 0.95 * s), 0.78 * s); }
+          for (let lev = 2; lev <= 3; lev++) { // semiquavers get a second beam, demisemiquavers a third
+            for (let q = 0; q <= last; q++) {
+              if (its[q].val.flags < lev) continue;
+              const off = (lev - 1) * 0.78 * s;
+              if (q < last && its[q + 1].val.flags >= lev) beamBar(bm, bm.xs[q], bm.xs[q + 1], off);
+              else if (!(q > 0 && its[q - 1].val.flags >= lev)) { const dir = q < last ? 1 : -1; beamBar(bm, Math.min(bm.xs[q], bm.xs[q] + dir * 0.95 * s), Math.max(bm.xs[q], bm.xs[q] + dir * 0.95 * s), off); }
+            }
+          }
+          if (its.every((q) => q.val.trip)) { // a small 3 marks a triplet
+            const xm = (bm.xs[0] + bm.xs[last]) / 2, ym = bm.y0 + bm.slope * (xm - bm.x0) + (bm.up ? -0.55 : 0.55) * s;
+            c.font = "italic 700 " + Math.max(8, Math.round(s * 1.15)) + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
+            c.fillText("3", xm, ym); c.textBaseline = "alphabetic";
           }
           c.globalAlpha = base;
         }
@@ -1096,12 +1114,12 @@
       const r = rests[i];
       if (r.start > tMax) break;
       // a whole-bar rest sits in the middle of its bar
-      const x = xNow + ((r.bar ? r.start + r.beats / 2 : r.start) - beat) * ppb - (r.bar ? 1.3 * s : 0);
+      const x = xNow + ((r.bar ? r.start + r.len / 2 : r.start) - beat) * ppb - (r.bar ? 1.3 * s : 0);
       if (x > W + 2 * s) continue;
       const past = x < xNow - 1 ? Math.max(0, 1 - (xNow - x) / (xNow - headEnd)) : 1;
-      c.globalAlpha = (r.start + r.beats <= beat + 1e-6 ? 0.38 : 0.9) * past;
+      c.globalAlpha = (r.start + r.len <= beat + 1e-6 ? 0.38 : 0.9) * past;
       if (c.globalAlpha <= 0.02) continue;
-      drawRest(c, r.bar ? 4 : r.beats, x, top[r.staff] + 2 * s, s, r.staff === "treble" ? col.R : col.L);
+      drawRest(c, r.beats, x, top[r.staff] + 2 * s, s, r.staff === "treble" ? col.R : col.L);
     }
     c.globalAlpha = 1;
 
