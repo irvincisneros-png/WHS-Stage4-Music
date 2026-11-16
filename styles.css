@@ -2705,7 +2705,7 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 
 /* ----- top bar (player and library) ----- */
 .fn-bar {
-  flex: none; position: relative; z-index: 5; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "id main end"; align-items: center; gap: 8px 14px;
+  flex: none; position: relative; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "id main end"; align-items: center; gap: 8px 14px;
   padding: 9px 14px; padding-top: max(9px, env(safe-area-inset-top)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right));
   background: var(--fn-panel); border-bottom: 1px solid var(--fn-hair); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 }
@@ -2720,7 +2720,7 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 }
 .fn-back:hover { border-color: var(--terracotta); }
 .fn-title { min-width: 0; }
-.fn-title h2 { margin: 0; font: 700 1.08rem/1.15 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
+.fn-title h2 { margin: 0; font: 700 1.08rem/1.15 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fn-title span { display: block; margin-top: 2px; color: var(--ink-soft); font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fn-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .fn-brand h1 { margin: 0; font: 800 1.25rem/1.1 var(--font-display); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2765,11 +2765,21 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 .fn-tchip:hover .fn-tchip-face { border-color: var(--terracotta); }
 
 /* ----- thin progress line under the bar ----- */
-.fn-timeline { flex: none; position: relative; height: 5px; background: color-mix(in srgb, var(--ink) 10%, transparent); z-index: 4; }
+.fn-timeline { flex: none; position: relative; display: flex; align-items: center; height: 16px; z-index: 4; cursor: pointer; touch-action: none; background: var(--fn-panel); }
+.fn-track { position: relative; flex: 1; height: 5px; background: color-mix(in srgb, var(--ink) 12%, transparent); transition: height .12s; }
+.fn-timeline:hover .fn-track, .fn-timeline:focus-visible .fn-track { height: 8px; }
+.fn-knob { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; z-index: 5; background: #fff; box-shadow: 0 0 0 3px rgba(91,140,255,.45), 0 2px 6px rgba(0,0,0,.4); transition: left .12s linear; pointer-events: none; }
+.fn-app .fn-timeline:focus-visible { outline-offset: -3px; }
 .fn-ticks { position: absolute; inset: 0; z-index: 3; pointer-events: none;
   background-image: linear-gradient(90deg, color-mix(in srgb, var(--bg) 70%, transparent) 1px, transparent 1px); background-size: calc(100% / var(--bars)) 100%; }
 .fn-loopzone { position: absolute; top: 0; bottom: -4px; z-index: 1; background: color-mix(in srgb, var(--butter) 60%, transparent); border-radius: 0 0 4px 4px; }
 .fn-fill { position: absolute; left: 0; top: 0; bottom: 0; z-index: 2; background: linear-gradient(90deg, #5b8cff, #34e0c4); box-shadow: 0 0 12px rgba(91,140,255,.7); transition: width .12s linear; }
+
+/* ----- optional stave strip (written music above the falling notes) ----- */
+.fn-stave { flex: none; position: relative; height: clamp(124px, 24cqh, 226px); background: rgb(13,18,38); border-bottom: 1px solid var(--fn-hair); overflow: hidden; }
+.fn-stave.one { height: clamp(88px, 15cqh, 140px); }
+.fn-app[data-stage="light"] .fn-stave { background: #fff; }
+.fn-stave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 /* ----- stage ----- */
 .fn-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #05070f; }
@@ -2782,8 +2792,10 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 .fn-legend span + i { margin-left: 5px; }
 .fn-hud-end { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .fn-hud .fn-pill { pointer-events: auto; }
-.fn-barlbl { font: 700 .78rem var(--font-mono); }
-.fn-barlbl small { color: var(--ink-soft); font-size: inherit; font-weight: 600; margin-left: -4px; }
+.fn-barlbl { font: 700 .78rem var(--font-mono); padding: 0 3px; gap: 2px; }
+.fn-barlbl small { color: var(--ink-soft); font-size: inherit; font-weight: 600; margin-left: 1px; }
+.fn-barbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer; }
+.fn-barbtn:hover { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--terracotta); }
 .fn-score { font-family: var(--font-display); gap: 5px; }
 .fn-score strong { font-size: 1.05rem; font-weight: 800; }
 .fn-score > span { color: var(--ink-soft); font-weight: 700; }
@@ -2983,15 +2995,11 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
 
 /* ----- the app's own size decides the layout (it may be turned on its side) ----- */
 /* the three switches move into Settings when the bar gets tight */
-@container fnapp (max-width: 1230px) { .fn-bar-chips { display: none; } }
-@container fnapp (max-width: 900px) {
-  .fn-title h2 { max-width: 16ch; }
-  .fn-seg button { padding: 0 10px; }
-}
+@container fnapp (max-width: 1330px) { .fn-bar-chips { display: none; } }
+@container fnapp (max-width: 900px) { .fn-seg button { padding: 0 10px; } }
 /* narrow (a phone held upright): controls drop to a second row */
 @container fnapp (max-width: 700px) {
   .fn-player .fn-bar { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id end" "main main"; }
-  .fn-title h2 { max-width: none; }
   .fn-bar-main { justify-content: space-between; }
   .fn-back span { display: none; }
   .fn-back { padding: 0; width: 40px; justify-content: center; }
@@ -3027,14 +3035,18 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
 @container fnapp (max-height: 460px) {
   .fn-bar { padding-top: max(5px, env(safe-area-inset-top)); padding-bottom: 5px; gap: 6px 10px; }
   .fn-title span { display: none; }
-  .fn-title h2 { font-size: .98rem; max-width: 18ch; }
+  .fn-title h2 { font-size: .98rem; }
   .fn-play { width: 40px; height: 40px; }
   .fn-icon-btn { width: 36px; height: 36px; }
   .fn-stepper, .fn-seg { height: 36px; }
   .fn-stepper button { width: 30px; height: 30px; }
   .fn-seg button { min-height: 28px; padding: 0 10px; font-size: .82rem; }
   .fn-back { min-height: 36px; }
-  .fn-timeline { height: 4px; }
+  .fn-timeline { height: 12px; }
+  .fn-stave { height: 104px; }
+  .fn-stave.one { height: 76px; }
+  .fn-track { height: 4px; }
+  .fn-barbtn { width: 24px; height: 24px; }
   .fn-hud { top: 6px; }
   .fn-pill { min-height: 30px; padding: 0 11px; font-size: .78rem; }
   .fn-floatwrap { top: 42px; }
@@ -3063,7 +3075,7 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
 @media (pointer: coarse) { .fn-icon-btn, .fn-back { min-height: 40px; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .fn-card, .fn-resume, .fn-play, .fn-start, .fn-cta, .fn-fill, .fn-switch-track, .fn-switch-track span, .fn-mic.on i, .fn-card-play { transition: none !important; }
+  .fn-card, .fn-resume, .fn-play, .fn-start, .fn-cta, .fn-fill, .fn-knob, .fn-track, .fn-switch-track, .fn-switch-track span, .fn-mic.on i, .fn-card-play { transition: none !important; }
   .fn-card:hover, .fn-card:focus-visible, .fn-resume:hover { transform: none; }
   .fn-heard, .fn-count span, .fn-waitchip i, .fn-result, .fn-result-card, .fn-newbest, .fn-ok, .fn-backdrop, .fn-drawer, .fn-toast,
   .fn-result-card .fn-stars.pop .on, .fn-tip-layer, .fn-tip, .fn-updatebar { animation: none !important; }
