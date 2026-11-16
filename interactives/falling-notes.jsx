@@ -167,20 +167,34 @@
     g.notes.forEach((n) => { n.status = "pending"; n.late = false; });
     g.playing = false; g.waiting = false; g.waitChord = null; g.finished = false; g.result = null;
     g.needCount = true; g.countLeft = 0; g.beat = homeBeat(g); g.flash = {}; g.tap = {}; g.lastPass = null; g.ignoreUntil = 0;
+    g.jumped = false; g.countNext = false;
+    reindex(g);
+  }
+  /* Move to another place in the song. Notes from there on can be played again.
+     Notes that were jumped over count as skipped: they are left out of the score,
+     and a run with skipped notes is a practice run (no stars, no best score). */
+  function seek(g, b) {
+    b = Math.max(0, Math.min(g.totalBeats - 0.001, b));
+    g.notes.forEach((n) => {
+      if (n.start >= b - 1e-6) { n.status = "pending"; n.late = false; }
+      else if (n.status === "pending") { n.status = "skip"; if (isScored(g, n)) g.jumped = true; }
+    });
+    g.beat = b; g.waiting = false; g.waitChord = null; g.finished = false; g.result = null;
+    g.countLeft = 0; g.needCount = false; g.countNext = !g.playing; g.flash = {}; g.ignoreUntil = 0;
     reindex(g);
   }
   function resetRange(g, a, b) { g.notes.forEach((n) => { if (n.start >= a - 1e-6 && n.start < b - 1e-6) { n.status = "pending"; n.late = false; } }); }
   const chordDone = (c) => c.notes.every((n) => n.status !== "pending");
   function counts(g) {
-    let hits = 0, misses = 0;
-    g.scored.forEach((n) => { if (n.status === "hit") hits++; else if (n.status === "miss") misses++; });
-    return { hits, misses, total: g.scored.length };
+    let hits = 0, misses = 0, skips = 0;
+    g.scored.forEach((n) => { if (n.status === "hit") hits++; else if (n.status === "miss") misses++; else if (n.status === "skip") skips++; });
+    return { hits, misses, total: g.scored.length - skips };
   }
   const pctOf = (c) => (c.total ? Math.round((c.hits / c.total) * 100) : 0);
 
   function play(g) {
     if (g.finished) resetAll(g);
-    if (g.needCount) { g.needCount = false; g.countLeft = g.bpb; g.lastCountInt = g.bpb + 1; }
+    if (g.needCount || g.countNext) { g.needCount = false; g.countNext = false; g.countLeft = g.bpb; g.lastCountInt = g.bpb + 1; }
     g.playing = true;
   }
   function pause(g) { g.playing = false; }
@@ -245,8 +259,9 @@
       g.playing = false; g.finished = true; g.beat = g.totalBeats;
       if (o.demo) { g.result = null; return; }
       const c = counts(g), pct = pctOf(c);
-      g.result = { pct, stars: FC.starsFor(pct), hits: c.hits, total: c.total };
-      if (g.key !== "custom") saveBest(g.key, o.hands, o.wait, pct);
+      const practice = !!g.jumped;
+      g.result = { pct, stars: practice ? 0 : FC.starsFor(pct), hits: c.hits, total: c.total, practice };
+      if (g.key !== "custom" && !practice) saveBest(g.key, o.hands, o.wait, pct);
       H.finished(g.result);
     }
   }
@@ -521,7 +536,7 @@
       const h = Math.max(6, yb - yt), x = k.x + pad, w = k.w - pad * 2, y0 = yb - h;
       if (w < 2) continue;
       const r = Math.min(7, w / 2.6, h / 2);
-      const missed = n.status === "miss", hit = n.status === "hit";
+      const missed = n.status === "miss", hit = n.status === "hit" || n.status === "skip";
       c.globalAlpha = !scored ? 0.3 : missed ? 0.5 : hit ? 0.45 : 1;
       // glow strengthens as the note nears the hit line (dark) / soft drop shadow (light)
       if (scored && !missed && !hit) {
@@ -544,13 +559,13 @@
       // note name in a small rounded label near the bottom of the bar
       if (labelsOn && h >= 18 && w >= 8 && w < 17) {
         // narrow keys (phones): plain bold letter, no pill
-        const lab = n._lab || (n._lab = FC.midiToLetter(n.midi));
+        const lab = n._lab || (n._lab = nameIn(g, n.midi));
         const fs = Math.max(8, Math.min(12, Math.floor(lab.length > 1 ? w * 0.72 : w * 0.85)));
         c.fillStyle = "#fff"; c.font = "700 " + fs + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
         c.fillText(lab, x + w / 2, yb - 4 - fs / 2);
         c.textAlign = "left";
       } else if (labelsOn && h >= 26 && w >= 17) {
-        const lab = n._lab || (n._lab = FC.midiToLetter(n.midi));
+        const lab = n._lab || (n._lab = nameIn(g, n.midi));
         const fs = Math.max(11, Math.min(13, Math.floor(w * 0.42))), lw = Math.min(w - 4, lab.length * fs * 0.62 + 10);
         const ly = yb - 5 - 16;
         c.fillStyle = "rgba(6,10,28,0.36)"; rr(c, x + w / 2 - lw / 2, ly, lw, 16, 8); c.fill();
@@ -681,6 +696,298 @@
     }
   }
 
+  /* ------------------------------------------------------------ stave (optional strip of written music) */
+  /* The same notes as the falling bars, written on a stave that scrolls past a
+     "now" line. Right hand = treble, left hand = bass, in the hand colours.
+     Kept simple on purpose: no rests, no beams (short notes carry flags), no ties. */
+  const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];   // C D E F G A B (also the steps of a major scale)
+  const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6];  // F C G D A E B
+  const FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3];   // B E A D G C F
+  const STAFF_BOT = { treble: 30, bass: 18 };  // bottom line as a step number: E4 and G2 (C4 = 28)
+  const KEYSIG_STEP = { sharp: [38, 35, 39, 36, 33, 37, 34], flat: [34, 37, 33, 36, 32, 35, 31] }; // treble; bass is 14 lower
+  /* note values in beats (a beat = a crotchet): [beats, head, dots, flags] */
+  const VALUES = [[6, "w", 1, 0], [4, "w", 0, 0], [3, "h", 1, 0], [2, "h", 0, 0], [1.5, "q", 1, 0], [1, "q", 0, 0],
+    [0.75, "q", 1, 1], [0.5, "q", 0, 1], [0.375, "q", 1, 2], [0.25, "q", 0, 2], [0.125, "q", 0, 3]]
+    .map((v, i) => ({ id: i, beats: v[0], head: v[1], dots: v[2], flags: v[3] }));
+  function noteValue(beats) {
+    let best = VALUES[0], bd = 1e9;
+    VALUES.forEach((v) => { const d = Math.abs(Math.log2(Math.max(0.01, beats) / v.beats)); if (d < bd) { bd = d; best = v; } });
+    return best;
+  }
+  /* the key signature that fits the song best: -6 (six flats) to 6 (six sharps) */
+  function guessKey(notes) {
+    const count = new Array(12).fill(0);
+    notes.forEach((n) => { count[((n.midi % 12) + 12) % 12]++; });
+    let best = 0, bestScore = -1;
+    [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6].forEach((k) => {
+      const tonic = (((k * 7) % 12) + 12) % 12;
+      let sc = 0;
+      LETTER_PC.forEach((pc) => { sc += count[(tonic + pc) % 12]; });
+      if (sc > bestScore) { bestScore = sc; best = k; }
+    });
+    return best;
+  }
+  /* how a note is written in a key: its line or space (step) and whether it is sharp (1), flat (-1) or natural (0) */
+  function spell(midi, keyAlt, k) {
+    const pc = ((midi % 12) + 12) % 12;
+    const mk = (L, alt) => ({ step: (Math.floor((midi - alt) / 12) - 1) * 7 + L, alt });
+    for (let L = 0; L < 7; L++) if ((((LETTER_PC[L] + keyAlt[L]) % 12) + 12) % 12 === pc) return mk(L, keyAlt[L]); // a note of the key
+    for (let L = 0; L < 7; L++) if (LETTER_PC[L] === pc) return mk(L, 0);                                        // a white note the key changes
+    const a = k < 0 ? -1 : 1;
+    for (let L = 0; L < 7; L++) if ((((LETTER_PC[L] + a) % 12) + 12) % 12 === pc) return mk(L, a);                 // outside the key
+    return mk(0, 0);
+  }
+  const ledgerCount = (p, st) => (p > STAFF_BOT[st] + 8 ? Math.floor((p - STAFF_BOT[st] - 8) / 2) : p < STAFF_BOT[st] ? Math.floor((STAFF_BOT[st] - p) / 2) : 0);
+
+  /* a note's name in the song's key, so the bars, the prompts and the stave agree
+     (in a flat key the black note below E is Eb, not D#) */
+  function nameIn(g, midi, withOctave) {
+    if (g.keyK === undefined) {
+      g.keyK = guessKey(g.notes); g.keyAlt = new Array(7).fill(0);
+      (g.keyK > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, Math.abs(g.keyK)).forEach((L) => { g.keyAlt[L] = g.keyK > 0 ? 1 : -1; });
+    }
+    const sp = spell(midi, g.keyAlt, g.keyK), L = ((sp.step % 7) + 7) % 7;
+    return "CDEFGAB"[L] + (sp.alt > 0 ? "#" : sp.alt < 0 ? "b" : "") + (withOctave ? Math.floor(sp.step / 7) : "");
+  }
+
+  /* work out, once per song, how every note is written */
+  function buildStave(g) {
+    const notes = g.notes, bpb = g.bpb;
+    const k = guessKey(notes), keyAlt = new Array(7).fill(0);
+    (k > 0 ? SHARP_ORDER : FLAT_ORDER).slice(0, Math.abs(k)).forEach((L) => { keyAlt[L] = k > 0 ? 1 : -1; });
+    const hasR = notes.some((n) => n.hand === "R"), hasL = notes.some((n) => n.hand === "L");
+    const mode = hasR && hasL ? "both" : hasL ? "bass" : "treble";
+    // the next note in the same hand tells us the written length better than how long a key was held
+    const nextStart = new Map();
+    ["R", "L"].forEach((h) => {
+      const hs = notes.filter((n) => n.hand === h);
+      let j = 0;
+      for (let i = 0; i < hs.length; i++) { while (j < hs.length && hs[j].start <= hs[i].start + 0.03) j++; if (j < hs.length) nextStart.set(hs[i], hs[j].start); }
+    });
+    const inBar = {}, groups = new Map(), items = [];
+    let minBeats = 4;
+    notes.forEach((n) => {
+      const sp = spell(n.midi, keyAlt, k);
+      let staff = mode === "both" ? (n.hand === "R" ? "treble" : "bass") : mode;
+      if (mode === "both") {
+        const other = staff === "treble" ? "bass" : "treble";
+        if (ledgerCount(sp.step, staff) > 3 && ledgerCount(sp.step, other) < ledgerCount(sp.step, staff)) staff = other;
+      }
+      // very high or very low notes are written an octave (or two) closer, with an 8va mark
+      let step = sp.step, ott = 0;
+      while (ledgerCount(step, staff) > 4) { const high = step > STAFF_BOT[staff] + 8; step += high ? -7 : 7; ott += high ? 1 : -1; }
+      // an accidental is written once and then lasts until the bar line
+      const bar = Math.floor(n.start / bpb + 1e-6), key = bar + "|" + staff + "|" + step;
+      const inForce = key in inBar ? inBar[key] : keyAlt[((sp.step % 7) + 7) % 7];
+      const acc = sp.alt === inForce ? null : sp.alt;
+      inBar[key] = sp.alt;
+      const gap = nextStart.has(n) ? nextStart.get(n) - n.start : 0;
+      const val = noteValue(gap > 0 && gap <= 4.5 && n.dur >= 0.55 * gap ? gap : n.dur);
+      if (val.beats < minBeats) minBeats = val.beats;
+      const gk = staff + "|" + Math.round(n.start * 32) + "|" + val.id;
+      let it = groups.get(gk);
+      if (!it) { it = { start: n.start, staff, val, heads: [] }; groups.set(gk, it); items.push(it); }
+      it.heads.push({ n, step, ott, acc });
+    });
+    items.forEach((it) => {
+      it.heads.sort((a, b) => a.step - b.step);
+      const mid = STAFF_BOT[it.staff] + 4, lo = it.heads[0].step, hi = it.heads[it.heads.length - 1].step;
+      it.up = (mid - lo) > (hi - mid); // stem goes up when the notes sit low on the stave
+      // notes a step apart cannot share a column: the second one sits on the other side of the stem
+      let prev = null;
+      if (it.up) it.heads.forEach((h) => { h.side = prev && h.step - prev.step === 1 && !prev.side ? 1 : 0; prev = h; });
+      else for (let i = it.heads.length - 1; i >= 0; i--) { const h = it.heads[i]; h.side = prev && prev.step - h.step === 1 && !prev.side ? -1 : 0; prev = h; }
+    });
+    items.sort((a, b) => a.start - b.start);
+    return { k, mode, items, minBeats: Math.max(0.25, minBeats) };
+  }
+
+  function staveColors(dark) {
+    return dark
+      ? { line: "rgba(255,255,255,0.44)", ink: "#eef1fb", soft: "rgba(238,241,251,0.5)", R: "#8fb1ff", L: "#ffc46b", bar: "rgba(255,255,255,0.3)", now: "#b9ccff", bg: "13,18,38", miss: "#ff7a7a" }
+      : { line: "rgba(22,22,26,0.6)", ink: "#16161a", soft: "rgba(22,22,26,0.5)", R: "#2762e0", L: "#d9760f", bar: "rgba(22,22,26,0.32)", now: "#2762e0", bg: "255,255,255", miss: "#d92d20" };
+  }
+  /* clefs and accidentals are drawn as shapes (not font characters) so they look the same on every device.
+     Units: 1 = the gap between two stave lines, y pointing up. */
+  function drawTreble(c, x, yG, s, color) { // yG = the G line (second from the bottom)
+    c.save(); c.translate(x, yG); c.scale(s, -s);
+    c.strokeStyle = color; c.fillStyle = color; c.lineCap = "round"; c.lineJoin = "round"; c.lineWidth = 0.21;
+    c.beginPath();
+    c.moveTo(-0.42, -0.15);
+    c.bezierCurveTo(-0.5, 0.45, 0.15, 0.75, 0.5, 0.3);
+    c.bezierCurveTo(0.85, -0.2, 0.55, -0.95, -0.05, -0.98);
+    c.bezierCurveTo(-0.75, -1.0, -1.15, -0.35, -1.0, 0.35);
+    c.bezierCurveTo(-0.85, 1.1, -0.2, 1.6, 0.2, 2.3);
+    c.bezierCurveTo(0.5, 2.85, 0.75, 3.5, 0.55, 4.0);
+    c.bezierCurveTo(0.42, 4.35, 0.12, 4.4, -0.02, 4.0);
+    c.bezierCurveTo(-0.2, 3.5, -0.08, 2.9, 0.0, 2.3);
+    c.lineTo(0.38, -1.75);
+    c.bezierCurveTo(0.45, -2.25, 0.2, -2.65, -0.15, -2.62);
+    c.bezierCurveTo(-0.45, -2.6, -0.6, -2.3, -0.45, -2.1);
+    c.stroke();
+    c.beginPath(); c.arc(-0.36, -2.14, 0.2, 0, 6.2832); c.fill();
+    c.restore();
+  }
+  function drawBass(c, x, yF, s, color) { // yF = the F line (second from the top)
+    c.save(); c.translate(x, yF); c.scale(s, -s);
+    c.strokeStyle = color; c.fillStyle = color; c.lineCap = "round"; c.lineJoin = "round"; c.lineWidth = 0.26;
+    c.beginPath();
+    c.moveTo(-0.72, 0.1);
+    c.bezierCurveTo(-0.75, 0.8, -0.2, 1.05, 0.2, 0.95);
+    c.bezierCurveTo(0.78, 0.8, 0.98, 0.15, 0.82, -0.55);
+    c.bezierCurveTo(0.62, -1.5, -0.2, -2.3, -1.0, -2.72);
+    c.stroke();
+    c.beginPath(); c.arc(-0.56, 0.02, 0.3, 0, 6.2832); c.fill();
+    c.beginPath(); c.arc(1.42, 0.5, 0.15, 0, 6.2832); c.arc(1.42, -0.5, 0.15, 0, 6.2832); c.fill();
+    c.restore();
+  }
+  function drawAccidental(c, type, x, y, s, color) { // 1 sharp, -1 flat, 0 natural
+    c.save(); c.translate(x, y); c.scale(s, -s);
+    c.strokeStyle = color; c.lineCap = "butt"; c.lineJoin = "round";
+    const line = (x1, y1, x2, y2, w) => { c.lineWidth = w; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); };
+    if (type === 1) {
+      line(-0.17, -0.82, -0.17, 0.72, 0.085); line(0.17, -0.72, 0.17, 0.82, 0.085);
+      line(-0.4, -0.4, 0.4, -0.16, 0.22); line(-0.4, 0.16, 0.4, 0.4, 0.22);
+    } else if (type === -1) {
+      line(-0.22, 1.3, -0.22, -0.5, 0.09);
+      c.lineWidth = 0.15; c.beginPath(); c.moveTo(-0.22, 0.18);
+      c.bezierCurveTo(0.12, 0.62, 0.52, 0.3, 0.32, -0.08);
+      c.bezierCurveTo(0.18, -0.3, -0.08, -0.42, -0.22, -0.5); c.stroke();
+    } else {
+      line(-0.17, 0.9, -0.17, -0.42, 0.085); line(0.17, 0.42, 0.17, -0.9, 0.085);
+      line(-0.17, 0.2, 0.17, 0.4, 0.22); line(-0.17, -0.4, 0.17, -0.2, 0.22);
+    }
+    c.restore();
+  }
+
+  function drawStave(c, g, W, H, dark) {
+    const S = g.stave || (g.stave = buildStave(g)), col = staveColors(dark), both = S.mode === "both";
+    const bpb = g.bpb, beat = g.beat;
+    // spacing between stave lines, from the height: room for ledger lines above, between and below
+    const s = Math.max(4.5, Math.min(13, H / (both ? 18.5 : 10.5)));
+    const y0 = (H - (both ? 12.5 : 4) * s) / 2;                 // top line of the upper stave
+    const top = { treble: y0, bass: both ? y0 + 8.5 * s : y0 };
+    const staves = both ? ["treble", "bass"] : [S.mode];
+    const yOf = (staff, step) => top[staff] + 4 * s - (step - STAFF_BOT[staff]) * s / 2;
+    const nk = Math.abs(S.k), xLeft = Math.max(8, s * 0.9), xKey = xLeft + 3.4 * s, xTime = xKey + nk * 1.05 * s + (nk ? 0.5 * s : 0);
+    const headEnd = xTime + 2.3 * s, xNow = headEnd + 2.4 * s;
+    const ppb = Math.min(16 * s, Math.max((W - xNow) / (4 * bpb), (1.9 * s) / S.minBeats));
+    const yTop = top[staves[0]], yBot = top[staves[staves.length - 1]] + 4 * s;
+    const lines = (x1, x2) => {
+      c.fillStyle = col.line;
+      staves.forEach((st) => { for (let i = 0; i < 5; i++) c.fillRect(x1, Math.round(top[st] + i * s) - 0.5, x2 - x1, 1); });
+    };
+
+    c.clearRect(0, 0, W, H);
+    lines(headEnd, W);
+
+    // bar lines and bar numbers
+    c.font = "600 " + Math.max(9, Math.round(s * 1.05)) + "px " + FONT; c.textAlign = "left"; c.textBaseline = "alphabetic";
+    const firstBar = Math.max(0, Math.floor((beat - (xNow - headEnd) / ppb) / bpb));
+    for (let b = firstBar; b * bpb <= g.totalBeats + 1e-6; b++) {
+      const x = Math.round(xNow + (b * bpb - beat) * ppb - 1.3 * s);
+      if (x > W) break;
+      if (x < headEnd) continue;
+      c.fillStyle = col.bar; c.fillRect(x, yTop, 1, yBot - yTop);
+      if (b * bpb < g.totalBeats) { c.fillStyle = col.soft; c.fillText(String(b + 1), x + 4, yTop - 0.7 * s); }
+    }
+
+    // notes
+    const items = S.items, tMin = beat - (xNow - headEnd + 2 * s) / ppb, tMax = beat + (W - xNow + 2 * s) / ppb;
+    let lo = 0, hi = items.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (items[m].start < tMin) lo = m + 1; else hi = m; }
+    const hw = 0.6 * s;
+    for (let i = lo; i < items.length; i++) {
+      const it = items[i];
+      if (it.start > tMax) break;
+      const x = xNow + (it.start - beat) * ppb, st = it.staff, v = it.val, heads = it.heads;
+      const past = x < xNow - 1 ? Math.max(0, 1 - (xNow - x) / (xNow - headEnd)) : 1;
+      const first = heads[0].n, hand = first.hand === "R" ? col.R : col.L;
+      const gone = (n) => n.status === "hit" || n.status === "skip";
+      const allHit = heads.every((h) => gone(h.n));
+      const base = (allHit ? 0.38 : 1) * past;
+      if (base <= 0.02) continue;
+      // ledger lines
+      c.globalAlpha = base; c.fillStyle = col.line;
+      const lowest = heads[0].step, highest = heads[heads.length - 1].step, bot = STAFF_BOT[st];
+      for (let p = bot + 10; p <= highest; p += 2) c.fillRect(x - 1.05 * s, Math.round(yOf(st, p)) - 0.5, 2.1 * s + (it.up ? hw : 0), 1);
+      for (let p = bot - 2; p >= lowest; p -= 2) c.fillRect(x - 1.05 * s - (it.up ? 0 : hw), Math.round(yOf(st, p)) - 0.5, 2.1 * s + (it.up ? 0 : hw), 1);
+      // stem and flags
+      const yLo = yOf(st, lowest), yHi = yOf(st, highest);
+      c.strokeStyle = hand; c.fillStyle = hand;
+      if (v.head !== "w") {
+        const xs = it.up ? x + hw - 0.05 * s : x - hw + 0.05 * s, tip = it.up ? yHi - 3.3 * s : yLo + 3.3 * s;
+        c.lineWidth = Math.max(1, 0.11 * s); c.lineCap = "butt";
+        c.beginPath(); c.moveTo(xs, it.up ? yLo : yHi); c.lineTo(xs, tip); c.stroke();
+        const d = it.up ? 1 : -1;
+        c.lineWidth = Math.max(1.2, 0.17 * s); c.lineCap = "round";
+        for (let f = 0; f < v.flags; f++) {
+          const ty = tip + d * f * 0.8 * s;
+          c.beginPath(); c.moveTo(xs, ty);
+          c.bezierCurveTo(xs + 0.15 * s, ty + d * 0.9 * s, xs + 1.05 * s, ty + d * 1.15 * s, xs + 0.72 * s, ty + d * 2.2 * s);
+          c.stroke();
+        }
+      }
+      // heads, accidentals, dots
+      let accCol = 0, lastAccStep = -99;
+      for (let j = heads.length - 1; j >= 0; j--) {
+        const h = heads[j], y = yOf(st, h.step), hx = x + h.side * (2 * hw - 0.1 * s);
+        const miss = h.n.status === "miss";
+        const color = miss ? col.miss : h.n.hand === "R" ? col.R : col.L;
+        c.globalAlpha = (gone(h.n) ? 0.38 : miss ? 0.85 : 1) * past;
+        c.fillStyle = color;
+        c.save(); c.translate(hx, y); c.rotate(-0.36);
+        const whole = v.head === "w", rx = (whole ? 0.74 : 0.63) * s, ry = 0.43 * s;
+        c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, 6.2832); c.closePath();
+        if (v.head !== "q") {
+          const ix = (whole ? 0.38 : 0.47) * s, iy = (whole ? 0.27 : 0.2) * s, rot = whole ? 0.95 : 0;
+          c.moveTo(ix * Math.cos(rot), ix * Math.sin(rot)); c.ellipse(0, 0, ix, iy, rot, 0, 6.2832); c.closePath();
+          c.fill("evenodd");
+        } else c.fill();
+        c.restore();
+        if (h.acc != null) {
+          accCol = lastAccStep - h.step < 6 && lastAccStep !== -99 ? (accCol + 1) % 3 : 0; lastAccStep = h.step;
+          drawAccidental(c, h.acc, x - (it.up ? 0 : hw) - 1.45 * s - accCol * 0.95 * s, y, s, color);
+        }
+        for (let dn = 0; dn < v.dots; dn++) {
+          const onLine = ((h.step - bot) % 2 + 2) % 2 === 0;
+          const dx = x + hw + (heads.some((q) => q.side === 1) ? 2 * hw : 0) + 0.6 * s + dn * 0.5 * s;
+          c.beginPath(); c.arc(dx, y - (onLine ? s / 2 : 0), Math.max(1.1, 0.15 * s), 0, 6.2832); c.fill();
+        }
+        if (h.ott && (j === heads.length - 1 || j === 0)) {
+          c.font = "700 " + Math.max(8, Math.round(s * 0.95)) + "px " + FONT; c.textAlign = "center";
+          const lab = Math.abs(h.ott) > 1 ? "15" : "8";
+          c.fillText(lab, hx, h.ott > 0 ? y - 1.1 * s : y + 1.9 * s);
+        }
+      }
+      c.globalAlpha = 1;
+    }
+
+    // the "now" line
+    c.fillStyle = col.now; c.globalAlpha = 0.9;
+    c.fillRect(Math.round(xNow) - 1, yTop - 1.6 * s, 2, yBot - yTop + 3.2 * s);
+    c.globalAlpha = 0.16; c.fillRect(Math.round(xNow) - 5, yTop - 1.6 * s, 10, yBot - yTop + 3.2 * s);
+    c.globalAlpha = 1;
+
+    // left edge: notes slide out of sight under the clef, key and time signature
+    const fade = c.createLinearGradient(headEnd, 0, headEnd + 1.8 * s, 0);
+    fade.addColorStop(0, "rgba(" + col.bg + ",1)"); fade.addColorStop(1, "rgba(" + col.bg + ",0)");
+    c.fillStyle = "rgb(" + col.bg + ")"; c.fillRect(0, 0, headEnd, H);
+    c.fillStyle = fade; c.fillRect(headEnd, 0, 1.8 * s, H);
+    lines(xLeft, headEnd + 1.8 * s);
+    c.fillStyle = col.line; c.fillRect(Math.round(xLeft), yTop, 1.5, yBot - yTop);
+    staves.forEach((st) => {
+      if (st === "treble") drawTreble(c, xLeft + 1.7 * s, top.treble + 3 * s, s, col.ink);
+      else drawBass(c, xLeft + 1.55 * s, top.bass + s, s, col.ink);
+      const kind = S.k > 0 ? "sharp" : "flat";
+      for (let i = 0; i < nk; i++) drawAccidental(c, S.k > 0 ? 1 : -1, xKey + (i + 0.5) * 1.05 * s, yOf(st, KEYSIG_STEP[kind][i] - (st === "bass" ? 14 : 0)), s, col.ink);
+      c.fillStyle = col.ink; c.font = "800 " + Math.round(2.3 * s) + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
+      c.fillText(String(bpb), xTime + 1.0 * s, top[st] + 1.05 * s);
+      c.fillText("4", xTime + 1.0 * s, top[st] + 3.05 * s);
+    });
+    c.textAlign = "left"; c.textBaseline = "alphabetic";
+  }
+
   /* ------------------------------------------------------------ small UI bits */
   const ICONS = {
     play: <path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z" fill="currentColor" stroke="none" />,
@@ -695,6 +1002,8 @@
     minus: <path d="M5 12h14" />,
     plus: <path d="M12 5v14M5 12h14" />,
     check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+    chevL: <path d="M15 6l-6 6 6 6" />,
+    chevR: <path d="M9 6l6 6-6 6" />,
     note: <g><path d="M9 18V5.5l10-2V16" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></g>,
     sound: <g><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.6 7.6 0 0 1 0 11" /></g>,
     close: <path d="M6 6l12 12M18 6L6 18" />,
@@ -798,6 +1107,7 @@
             <section className="fn-sec" aria-labelledby="fn-sec-display">
               <h3 id="fn-sec-display">Display</h3>
               <Switch label="Note names" checked={s.labels} onChange={s.setLabels} />
+              <Switch label="Show the stave" checked={s.stave} onChange={s.setStave} hint="See the notes as written music, moving with the song." />
               <div className="fn-row">
                 <span className="fn-row-label">Look</span>
                 <Seg label="Look" value={s.stage} onChange={s.setStage} options={[["dark", "Dark"], ["light", "Light"]]} />
@@ -852,6 +1162,7 @@
     const [speed, setSpeed] = React.useState(1);
     const [metro, setMetro] = React.useState(!!saved.metro);
     const [labels, setLabels] = React.useState(saved.labels !== false);
+    const [stave, setStave] = React.useState(!!saved.stave);
     const [otherHand, setOtherHand] = React.useState(false);
     const [demo, setDemo] = React.useState(false);
     const [loop, setLoop] = React.useState(false);
@@ -864,6 +1175,9 @@
     const [snap, setSnap] = React.useState({});
     const [size, setSize] = React.useState({ w: 360, h: 420 });
     const wrapRef = React.useRef(null), canvasRef = React.useRef(null), bodyRef = React.useRef(null), gearRef = React.useRef(null);
+    const staveRef = React.useRef(null);
+    // one stave is enough when a song uses one hand only
+    const twoStaves = React.useMemo(() => g.notes.some((n) => n.hand === "R") && g.notes.some((n) => n.hand === "L"), [g]);
     const detRef = React.useRef(null);
     if (!detRef.current) detRef.current = new FC.Detector(SENS_KEYS[sens]);
     const live = React.useRef({}); // mic readouts updated by the loop
@@ -882,8 +1196,8 @@
     }, [hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd]);
     React.useEffect(() => {
       detRef.current.setSens(SENS_KEYS[sens]);
-      saveSettings({ sens, wait, metro, labels });
-    }, [sens, wait, metro, labels]);
+      saveSettings({ sens, wait, metro, labels, stave });
+    }, [sens, wait, metro, labels, stave]);
 
     const hooks = React.useMemo(() => ({
       click: (acc) => { window.MusicAudio && window.MusicAudio.click(acc); },
@@ -943,15 +1257,65 @@
       if (immRef.current && mq(ROT_MQ)) return [e.clientY - r.top, r.right - e.clientX];
       return [e.clientX - r.left, e.clientY - r.top];
     }
+    /* move to another place in the song */
+    function jump(b) { seek(g, b); detRef.current.reset(); }
+    function goBar(d) {
+      const cur = Math.floor(g.beat / g.bpb + 1e-6), into = g.beat - cur * g.bpb;
+      jump(Math.max(0, Math.min(totalBars - 1, d < 0 ? (into > 0.3 ? cur : cur - 1) : cur + 1)) * g.bpb);
+    }
+    const goRef = React.useRef(); goRef.current = goBar;
+    // the progress line: click or drag to jump to a bar
+    const lineRef = React.useRef(null), lineDrag = React.useRef(false);
+    function lineSeek(e) {
+      const el = lineRef.current; if (!el) return;
+      const r = el.getBoundingClientRect();
+      const f = immRef.current && mq(ROT_MQ) ? (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
+      jump(Math.max(0, Math.min(totalBars - 1, Math.floor(Math.max(0, Math.min(0.9999, f)) * totalBars))) * g.bpb);
+    }
+    function onLineDown(e) {
+      if (e.button != null && e.button > 0) return;
+      lineDrag.current = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      lineSeek(e);
+    }
+    function onLineMove(e) { if (lineDrag.current) lineSeek(e); }
+    function onLineUp() { lineDrag.current = false; }
+    function onLineKey(e) {
+      if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); goBar(-1); }
+      else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); goBar(1); }
+      else if (e.key === "Home") { e.preventDefault(); jump(0); }
+    }
+    // the falling area: drag up or down (or scroll) to move through the song
+    const scrub = React.useRef(null);
     function onStageDown(e) {
       if (e.button != null && e.button > 0) return;
       const p = stagePoint(e); if (!p) return;
       const m = keyAt(g.geo, p[0], p[1]);
-      if (m == null) return;
-      e.preventDefault();
-      tapKey(m);
+      if (m != null) { e.preventDefault(); tapKey(m); return; }
+      if (!g.geo) return;
+      scrub.current = { id: e.pointerId, y: p[1], beat: g.beat, was: g.playing, moved: false };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    }
+    function onStageUp(e) {
+      const sc = scrub.current;
+      if (!sc || sc.id !== e.pointerId) return;
+      scrub.current = null;
+      if (sc.moved && sc.was) { g.countNext = false; play(g); }
+    }
+    function onStageWheel(e) {
+      if (!g.geo || drawerRef.current) return;
+      jump(g.beat + (e.deltaY || 0) / 120);
     }
     function onStageMove(e) {
+      const sc = scrub.current;
+      if (sc && sc.id === e.pointerId) {
+        const q = stagePoint(e); if (!q || !g.geo) return;
+        const dy = q[1] - sc.y;
+        if (!sc.moved && Math.abs(dy) < 6) return;
+        if (!sc.moved) { sc.moved = true; if (sc.was) pause(g); }
+        jump(sc.beat + dy / ((g.geo.H - g.geo.kbH) / (LOOK_BARS * g.bpb)));
+        return;
+      }
       const cv = canvasRef.current; if (!cv || e.pointerType === "touch") return;
       const p = stagePoint(e);
       const over = !!p && keyAt(g.geo, p[0], p[1]) != null;
@@ -961,14 +1325,17 @@
     function restartAndPlay() { begin(false, true); }
     const toggleRef = React.useRef(); toggleRef.current = togglePlay;
 
-    // keyboard: space plays / pauses
+    // keyboard: space plays / pauses, left and right arrows move a bar
     React.useEffect(() => {
       const onKey = (e) => {
-        if (e.code !== "Space" && e.key !== " ") return;
+        const space = e.code === "Space" || e.key === " ", arrow = e.key === "ArrowLeft" || e.key === "ArrowRight";
+        if (!space && !arrow) return;
         if (drawerRef.current) return;
         const t = e.target, tag = t && t.tagName;
-        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || (t && t.isContentEditable)) return;
-        e.preventDefault(); toggleRef.current();
+        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || (t && t.isContentEditable) || (t && t.getAttribute && t.getAttribute("role") === "slider")) return;
+        if (space && (tag === "BUTTON" || tag === "A")) return;
+        e.preventDefault();
+        if (space) toggleRef.current(); else goRef.current(e.key === "ArrowLeft" ? -1 : 1); // arrows: back or forward a bar
       };
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
@@ -1029,7 +1396,7 @@
         }
         // 2) advance
         update(g, dt, now, hooks);
-        if (g.finished && g.result && g.result.newBest === undefined) g.result.newBest = g.key !== "custom" && g.result.pct > 0 && g.result.pct > prevBest.current;
+        if (g.finished && g.result && g.result.newBest === undefined) g.result.newBest = g.key !== "custom" && !g.result.practice && g.result.pct > 0 && g.result.pct > prevBest.current;
         // 3) draw
         if (cv) {
           const { w, h } = sizeRef.current, dpr = Math.min(2.5, window.devicePixelRatio || 1);
@@ -1040,6 +1407,17 @@
           if (colors.stage !== stageRef.current) colors = stageColors(stageRef.current);
           draw(c, g, g.geo, colors, fx, now, reduce, dpr);
         }
+        // 3b) the stave strip, when it is switched on
+        const sv = staveRef.current;
+        if (sv) {
+          const w = sv.clientWidth, h = sv.clientHeight, dpr = Math.min(2.5, window.devicePixelRatio || 1);
+          if (w > 0 && h > 0) {
+            if (sv.width !== Math.round(w * dpr) || sv.height !== Math.round(h * dpr)) { sv.width = Math.round(w * dpr); sv.height = Math.round(h * dpr); }
+            const sc = sv.getContext("2d");
+            sc.setTransform(dpr, 0, 0, dpr, 0, 0);
+            drawStave(sc, g, w, h, stageRef.current === "dark");
+          }
+        }
         // 4) UI snapshot
         if (now - lastUi > 100) {
           lastUi = now;
@@ -1048,7 +1426,7 @@
             playing: g.playing, waiting: g.waiting, finished: g.finished, result: g.result, count: g.countLeft > 0,
             countN: g.countLeft > 0 ? Math.max(1, Math.ceil(g.countLeft - 1e-9)) : 0, beat: g.beat,
             hits: cn.hits, misses: cn.misses, total: cn.total, bar: Math.max(1, Math.floor(Math.max(0, g.beat) / g.bpb) + 1),
-            expected: g.waiting ? expectedNow(g).map(FC.midiToName) : [], waitedMs: g.waiting ? now - g.arrivedMs : 0,
+            expected: g.waiting ? expectedNow(g).map((m) => nameIn(g, m, true)) : [], waitedMs: g.waiting ? now - g.arrivedMs : 0,
             level: lv.level || 0, heard: lv.note != null && now - lv.noteAt < 900 ? FC.midiToName(lv.note) : "", heardAt: lv.noteAt || 0,
             micOk: !!lv.micOk, lastPass: g.lastPass,
           });
@@ -1072,6 +1450,7 @@
             keys: g.geo ? { whites: g.geo.whites.length, keyW: g.geo.kw, keyH: g.geo.kbH, from: g.geo.a, to: g.geo.b } : null,
           };
         },
+        stave() { const S = g.stave || (g.stave = buildStave(g)); return { key: S.k, mode: S.mode, items: S.items.length, on: !!staveRef.current }; },
         injectNotes(midis) { const now = performance.now(); return (midis || []).map((m) => onHeard(g, m, now, 0)); },
         /* where a key is on the page (centre of its lower half), for tap tests */
         keyPoint(midi) {
@@ -1175,20 +1554,36 @@
             </div>
           </header>
 
-          <div className="fn-timeline" role="progressbar" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(pos * 100)} style={{ "--bars": totalBars }}>
-            {totalBars <= 80 ? <div className="fn-ticks" /> : null}
-            {loop ? <div className="fn-loopzone" style={{ left: ((Math.max(1, loopStart) - 1) / totalBars) * 100 + "%", width: ((Math.max(loopStart, loopEnd) - Math.max(1, loopStart) + 1) / totalBars) * 100 + "%" }} /> : null}
-            <div className="fn-fill" style={{ width: pos * 100 + "%" }} />
+          <div className="fn-timeline" ref={lineRef} role="slider" tabIndex={0} aria-label="Place in the song. Drag, or use the arrow keys, to move."
+            aria-valuemin={1} aria-valuemax={totalBars} aria-valuenow={Math.min(snap.bar || 1, totalBars)} aria-valuetext={"Bar " + Math.min(snap.bar || 1, totalBars) + " of " + totalBars}
+            title="Drag to move through the song" style={{ "--bars": totalBars }}
+            onPointerDown={onLineDown} onPointerMove={onLineMove} onPointerUp={onLineUp} onPointerCancel={onLineUp} onKeyDown={onLineKey}>
+            <div className="fn-track">
+              {totalBars <= 80 ? <div className="fn-ticks" /> : null}
+              {loop ? <div className="fn-loopzone" style={{ left: ((Math.max(1, loopStart) - 1) / totalBars) * 100 + "%", width: ((Math.max(loopStart, loopEnd) - Math.max(1, loopStart) + 1) / totalBars) * 100 + "%" }} /> : null}
+              <div className="fn-fill" style={{ width: pos * 100 + "%" }} />
+              <div className="fn-knob" style={{ left: pos * 100 + "%" }} />
+            </div>
           </div>
           <div className="sr-only" aria-live="polite">{status}{snap.lastPass != null ? " Last loop: " + snap.lastPass + "%" : ""}</div>
+          {stave ? (
+            <div className={"fn-stave" + (twoStaves ? "" : " one")}>
+              <canvas ref={staveRef} role="img" aria-label={"The notes of " + g.name + " written on a stave"} />
+            </div>
+          ) : null}
 
           <div className="fn-stage" ref={wrapRef}>
             <canvas ref={canvasRef} role="img" tabIndex={0} onPointerDown={onStageDown} onPointerMove={onStageMove}
+              onPointerUp={onStageUp} onPointerCancel={onStageUp} onWheel={onStageWheel}
               aria-label={"Falling notes for " + g.name + ". " + status}
               style={{ width: size.w + "px", height: size.h + "px" }} />
             <div className="fn-hud">
               <span className="fn-hud-start">
-                <span className="fn-pill fn-barlbl">Bar {Math.min(snap.bar || 1, totalBars)}<small>/{totalBars}</small></span>
+                <span className="fn-pill fn-barlbl">
+                  <button type="button" className="fn-barbtn" aria-label="Back one bar" title="Back one bar (left arrow)" onClick={() => goBar(-1)}><Icon n="chevL" size={16} /></button>
+                  <span>Bar {Math.min(snap.bar || 1, totalBars)}<small>/{totalBars}</small></span>
+                  <button type="button" className="fn-barbtn" aria-label="Forward one bar" title="Forward one bar (right arrow)" onClick={() => goBar(1)}><Icon n="chevR" size={16} /></button>
+                </span>
                 <span className="fn-pill fn-legend" aria-label="Colours: orange is the left hand, blue is the right hand">
                   <i className="fn-dot l" aria-hidden="true" /><span>Left</span><i className="fn-dot r" aria-hidden="true" /><span>Right</span>
                 </span>
@@ -1253,8 +1648,9 @@
             {snap.finished && res ? (
               <div className="fn-result" role="dialog" aria-label="Your result" ref={resultRef}>
                 <div className="fn-result-card">
-                  <Stars n={res.stars} pop />
-                  <h3>{res.stars === 3 ? "Brilliant!" : res.stars === 2 ? "Great job!" : res.stars === 1 ? "Nice work!" : "Keep practising!"}</h3>
+                  {res.practice ? null : <Stars n={res.stars} pop />}
+                  <h3>{res.practice ? "Practice run" : res.stars === 3 ? "Brilliant!" : res.stars === 2 ? "Great job!" : res.stars === 1 ? "Nice work!" : "Keep practising!"}</h3>
+                  {res.practice ? <p>You skipped part of the song. Play it all the way through to earn stars.</p> : null}
                   <div className="fn-ring" style={{ "--pct": res.pct }} role="img" aria-label={res.pct + " percent"}>
                     <div className="fn-pct">{res.pct}<small>%</small></div>
                   </div>
@@ -1277,7 +1673,7 @@
         {drawer ? (
           <SettingsDrawer onClose={() => setDrawer(false)} s={{
             wait, setWait, metro, setMetro, loop, setLoop, loopStart, loopEnd, setBar, totalBars,
-            labels, setLabels, stage, setStage, sens, setSens, listening, level: snap.level || 0, micOk: !!snap.micOk,
+            labels, setLabels, stave, setStave, stage, setStage, sens, setSens, listening, level: snap.level || 0, micOk: !!snap.micOk,
             startListening, stopListening, otherHand, setOtherHand, demo, setDemo,
           }} />
         ) : null}
