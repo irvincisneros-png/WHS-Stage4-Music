@@ -12,7 +12,7 @@
   const LOOK_BARS = 2;        // how many bars you can see falling
   const LATENCY = 0.09;       // s between a key press and the detector noticing
   const TOL_S = 0.25;         // timing window (s) when not waiting
-  const WAIT_LATE_S = 1.5;    // wait mode: notes later than this count as misses
+  const WAIT_LATE_S = 2.5;    // wait mode: notes later than this count as misses
   const SENS_KEYS = ["low", "medium", "high"];
   const SENS_LABELS = ["Low", "Medium", "High"];
 
@@ -134,7 +134,7 @@
       meta, key: meta.key, name: meta.name, bpm: model.bpm, bpb: model.bpb,
       totalBeats: model.totalBeats, notes,
       opts: { hands: "B", wait: true, speed: 1, metro: false, labels: true, otherHand: false, demo: false, loop: false, loopStart: 1, loopEnd: model.totalBeats / model.bpb },
-      flash: {}, geo: null,
+      flash: {}, tap: {}, geo: null,
     };
     buildSets(g); resetAll(g);
     return g;
@@ -155,7 +155,7 @@
   function resetAll(g) {
     g.notes.forEach((n) => { n.status = "pending"; n.late = false; });
     g.playing = false; g.waiting = false; g.waitChord = null; g.finished = false; g.result = null;
-    g.needCount = true; g.countLeft = 0; g.beat = homeBeat(g); g.flash = {}; g.lastPass = null; g.ignoreUntil = 0;
+    g.needCount = true; g.countLeft = 0; g.beat = homeBeat(g); g.flash = {}; g.tap = {}; g.lastPass = null; g.ignoreUntil = 0;
     reindex(g);
   }
   function resetRange(g, a, b) { g.notes.forEach((n) => { if (n.start >= a - 1e-6 && n.start < b - 1e-6) { n.status = "pending"; n.late = false; } }); }
@@ -299,6 +299,19 @@
     return { W, H, a, b, whites, kw, keys, kbH: Math.max(72, Math.min(126, Math.round(H * 0.22))) };
   }
 
+  /* which key is at (x, y) on the canvas? null above the keyboard */
+  function keyAt(geo, x, y) {
+    if (!geo) return null;
+    const hitY = geo.H - geo.kbH;
+    if (y < hitY || y > geo.H || x < 0 || x >= geo.W) return null;
+    if (y < hitY + geo.kbH * 0.62) {
+      for (let m = geo.a; m <= geo.b; m++) { const k = geo.keys[m]; if (k && k.black && x >= k.x && x < k.x + k.w) return m; }
+    }
+    const m = geo.whites[Math.min(geo.whites.length - 1, Math.floor(x / geo.kw))];
+    return m == null ? null : m;
+  }
+  const fmtTime = (sec) => Math.floor(sec / 60) + ":" + String(Math.round(sec) % 60).padStart(2, "0");
+
   /* ------------------------------------------------------------ stage look (canvas) */
   const FONT = '"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
   const HANDS = {
@@ -307,7 +320,7 @@
   };
   const HAND_BY_IDX = [HANDS.R, HANDS.L];
   const RED = "#ef4444";
-  const SPARKS = 192, SPARK_LIFE = 450, FLASH_MS = 450, MISS_MS = 380;
+  const SPARKS = 192, SPARK_LIFE = 450, FLASH_MS = 450, MISS_MS = 380, TAP_MS = 240;
 
   function stageColors(stage) {
     const siteDark = document.documentElement.dataset.theme === "dark";
@@ -537,9 +550,11 @@
     for (let i = 0; i < wl.length; i++) {
       const m = wl[i], k = keys[m], L = fx.lit[m], fa = g.flash[m] ? Math.max(0, 1 - (now - g.flash[m]) / FLASH_MS) : 0;
       const ma = fx.missT[m] ? Math.max(0, 1 - (now - fx.missT[m]) / MISS_MS) : 0;
-      const press = (L && !fx.litFade[m]) || fa > 0.5 ? 2 : 0;
+      const tp = g.tap[m] ? Math.max(0, 1 - (now - g.tap[m]) / TAP_MS) : 0;
+      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 2 : 0;
       rrBottom(c, k.x + 0.5, hitY + press, k.w - 1, kbH - press - 0.5, 4);
       c.fillStyle = G.white; c.fill();
+      if (tp > 0) { c.globalAlpha = 0.2 * tp; c.fillStyle = "#1e2846"; c.fill(); }
       if (L) { c.globalAlpha = fx.litFade[m] ? 0.28 : 0.8; c.fillStyle = L.flat; c.fill(); }
       if (fa > 0) { c.globalAlpha = fa * 0.9; c.fillStyle = HAND_BY_IDX[fx.hand[m]].flat; c.fill(); }
       if (ma > 0) { c.globalAlpha = ma * 0.85; c.fillStyle = RED; c.fill(); }
@@ -547,14 +562,17 @@
       c.globalAlpha = 1;
     }
     c.fillStyle = G.top; c.fillRect(0, hitY, W, 10);
-    // C labels + middle-C dot
+    // key names (C keys always, the rest when "Note names" is on and keys are wide enough) + middle-C dot
     c.textAlign = "center"; c.textBaseline = "alphabetic";
+    const allNames = labelsOn && geo.kw >= 22;
     for (let i = 0; i < wl.length; i++) {
-      const m = wl[i]; if (m % 12 !== 0) continue;
+      const m = wl[i], isC = m % 12 === 0;
+      if (!isC && !allNames) continue;
       const k = keys[m]; if (k.w < 13) continue;
-      c.fillStyle = "#9a9aa9"; c.font = "600 10px " + FONT;
-      c.fillText("C" + (Math.floor(m / 12) - 1), k.x + k.w / 2, hitY + kbH - 7);
-      if (m === 60) { c.fillStyle = "#2762e0"; c.beginPath(); c.arc(k.x + k.w / 2, hitY + kbH - 22, 2.8, 0, 6.2832); c.fill(); }
+      const on = fx.lit[m] && !fx.litFade[m];
+      c.fillStyle = on ? "rgba(255,255,255,0.95)" : isC ? "#8a8a9b" : "#b3b3c1"; c.font = (isC ? "700 " : "600 ") + "10px " + FONT;
+      c.fillText(isC ? "C" + (Math.floor(m / 12) - 1) : FC.midiToLetter(m), k.x + k.w / 2, hitY + kbH - 7);
+      if (m === 60) { c.fillStyle = on ? "#fff" : "#2762e0"; c.beginPath(); c.arc(k.x + k.w / 2, hitY + kbH - 22, 2.8, 0, 6.2832); c.fill(); }
     }
     c.textAlign = "left";
     // black keys
@@ -562,10 +580,12 @@
     for (let i = 0; i < bl.length; i++) {
       const m = bl[i], k = keys[m], L = fx.lit[m], fa = g.flash[m] ? Math.max(0, 1 - (now - g.flash[m]) / FLASH_MS) : 0;
       const ma = fx.missT[m] ? Math.max(0, 1 - (now - fx.missT[m]) / MISS_MS) : 0;
-      const press = (L && !fx.litFade[m]) || fa > 0.5 ? 1.5 : 0;
+      const tp = g.tap[m] ? Math.max(0, 1 - (now - g.tap[m]) / TAP_MS) : 0;
+      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 1.5 : 0;
       c.fillStyle = "rgba(0,0,0,0.26)"; c.fillRect(k.x + 2, hitY, k.w, bh + 2 - press);
       rrBottom(c, k.x, hitY + press, k.w, bh - press, 3.5);
       c.fillStyle = G.black; c.fill();
+      if (tp > 0) { c.globalAlpha = 0.3 * tp; c.fillStyle = "#fff"; c.fill(); }
       if (L) { c.globalAlpha = fx.litFade[m] ? 0.35 : 0.88; c.fillStyle = L.flat; c.fill(); }
       if (fa > 0) { c.globalAlpha = fa * 0.9; c.fillStyle = HAND_BY_IDX[fx.hand[m]].flat; c.fill(); }
       if (ma > 0) { c.globalAlpha = ma * 0.9; c.fillStyle = RED; c.fill(); }
@@ -608,6 +628,8 @@
     minus: <path d="M5 12h14" />,
     plus: <path d="M12 5v14M5 12h14" />,
     check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+    note: <g><path d="M9 18V5.5l10-2V16" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></g>,
+    sound: <g><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.6 7.6 0 0 1 0 11" /></g>,
     close: <path d="M6 6l12 12M18 6L6 18" />,
     upload: <path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />,
     mic: <g><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></g>,
@@ -802,22 +824,53 @@
       try { await MIC.start(); setListening(true); return true; }
       catch (e) {
         const n = e && e.name;
-        setMicErr(n === "NotAllowedError" || n === "SecurityError" ? "The microphone is blocked. Allow it in your browser settings, then try again."
+        setMicErr((n === "NotAllowedError" || n === "SecurityError" ? "The microphone is blocked. Allow it in your browser settings to play on a real piano."
           : n === "NotFoundError" ? "No microphone found."
-          : "Could not start the microphone on this device.");
+          : "Could not start the microphone on this device.") + " You can still tap the keys on the screen.");
         return false;
       }
     }
     function stopListening() { MIC.stop(); setListening(false); live.current = {}; detRef.current.reset(); }
 
-    async function togglePlay() {
-      if (g.playing) { pause(g); return; }
-      if (!demo && !MIC.listening) { const ok = await startListening(); if (!ok) return; }
+    /* start the song. d = true: the app plays it. d = false: the student plays
+       (on a real piano through the mic, or by tapping the keys on screen). */
+    function begin(d, fresh) {
+      if (g.opts.demo !== d) { g.opts.demo = d; buildSets(g); resetAll(g); setDemo(d); }
+      else if (fresh || g.finished) resetAll(g);
+      // ask for the mic but do not wait for it: the on-screen keys work without one
+      if (!d && !MIC.listening) startListening();
       window.MusicAudio && window.MusicAudio.resume();
       detRef.current.reset();
       prevBest.current = bestPct(g.key, hands, wait);
       play(g);
       showStage();
+    }
+    function togglePlay() {
+      if (g.playing) { pause(g); return; }
+      begin(demo);
+    }
+    /* tap or click a key on the on-screen keyboard */
+    function tapKey(midi) {
+      const now = performance.now();
+      window.MusicAudio && window.MusicAudio.resume();
+      hooks.playNote(midi, 0.7, 0.7);
+      g.tap[midi] = now;
+      g.ignoreUntil = now + 400; // the mic must not count this sound a second time
+      if (!g.opts.demo) onHeard(g, midi, now, 0);
+    }
+    function onStageDown(e) {
+      const cv = canvasRef.current; if (!cv || (e.button != null && e.button > 0)) return;
+      const r = cv.getBoundingClientRect();
+      const m = keyAt(g.geo, e.clientX - r.left, e.clientY - r.top);
+      if (m == null) return;
+      e.preventDefault();
+      tapKey(m);
+    }
+    function onStageMove(e) {
+      const cv = canvasRef.current; if (!cv || e.pointerType === "touch") return;
+      const r = cv.getBoundingClientRect();
+      const over = keyAt(g.geo, e.clientX - r.left, e.clientY - r.top) != null;
+      if (cv.dataset.keys !== String(over)) cv.dataset.keys = String(over);
     }
     /* keep the falling notes and the keyboard on screen while playing */
     function showStage() {
@@ -829,11 +882,7 @@
       }
     }
     function restart() { resetAll(g); detRef.current.reset(); }
-    async function restartAndPlay() {
-      if (!MIC.listening) { const ok = await startListening(); if (!ok) return; }
-      prevBest.current = bestPct(g.key, hands, wait);
-      resetAll(g); detRef.current.reset(); play(g); showStage();
-    }
+    function restartAndPlay() { begin(false, true); }
     const toggleRef = React.useRef(); toggleRef.current = togglePlay;
 
     function toggleFs() {
@@ -992,7 +1041,7 @@
     const resultRef = React.useRef(null);
     React.useEffect(() => {
       if (snap.finished && snap.result && resultRef.current) { const b = resultRef.current.querySelector("button"); if (b) b.focus({ preventScroll: true }); }
-    }, [snap.finished && snap.result]);
+    }, [snap.finished && (snap.result || demo)]);
 
     // clamp loop bars
     function setBar(which, v) {
@@ -1002,7 +1051,7 @@
     const setSpeedClamped = (v) => setSpeed(Math.round(Math.max(0.25, Math.min(1.5, v)) * 100) / 100);
 
     const expectedText = snap.expected && snap.expected.length ? snap.expected.join(" + ") : "";
-    let status = demo ? "Press Play to hear the song." : "Press Play, then play the notes you see.";
+    let status = demo ? "Press Play to hear the song." : "Press Play, then play the notes you see on a piano or on the keys below.";
     if (snap.finished) status = "Song finished.";
     else if (snap.count) status = "Get ready...";
     else if (snap.waiting) status = "Waiting for: " + expectedText;
@@ -1038,7 +1087,7 @@
                 <button type="button" aria-label="Faster" onClick={() => setSpeedClamped(speed + 0.1)} disabled={speed >= 1.5}><Icon n="plus" size={16} /></button>
               </div>
               <Seg label="Hands" value={hands} onChange={setHands} options={[["R", "Right"], ["L", "Left"], ["B", "Both"]]} />
-              <Chip label="Wait for me" checked={wait} onChange={setWait} />
+              {demo ? null : <Chip label="Wait for me" checked={wait} onChange={setWait} />}
               <Chip label="Metronome" checked={metro} onChange={setMetro} />
               <Chip label="Play it for me" checked={demo} onChange={setDemo} />
             </div>
@@ -1071,7 +1120,9 @@
                   {acc != null ? <em>{acc}%</em> : null}
                 </span>
               )}
-              {listening ? (
+              {demo ? (
+                <span className="fn-mic demo"><Icon n="note" size={15} /> Playing it for you</span>
+              ) : listening ? (
                 <span className="fn-mic on" style={{ "--lvl": lvl / 100 }}><i aria-hidden="true" /> Listening</span>
               ) : (
                 <button type="button" className="fn-mic" onClick={startListening}><i aria-hidden="true" /> Start listening</button>
@@ -1079,11 +1130,11 @@
               {listening && !snap.playing && snap.heard ? <span className="fn-heard" key={snap.heardAt} aria-live="polite">Heard {snap.heard}</span> : null}
             </div>
           </div>
-          {micErr ? <p className="fn-error" role="alert">{micErr}</p> : null}
+          {micErr && !demo ? <p className="fn-micnote" role="status"><Icon n="mic" size={16} /> <span>{micErr}</span></p> : null}
           <div className="sr-only" aria-live="polite">{status}{snap.lastPass != null ? " Last loop: " + snap.lastPass + "%" : ""}</div>
 
           <div className="fn-stage" ref={wrapRef}>
-            <canvas ref={canvasRef} role="img" tabIndex={0}
+            <canvas ref={canvasRef} role="img" tabIndex={0} onPointerDown={onStageDown} onPointerMove={onStageMove}
               aria-label={"Falling notes for " + g.name + ". " + status}
               style={{ width: size.w + "px", height: size.h + "px" }} />
             {snap.waiting && expectedText ? (
@@ -1095,7 +1146,25 @@
               </div>
             ) : null}
             {snap.count && snap.countN ? <div className="fn-count" aria-hidden="true"><span key={snap.countN}>{snap.countN}</span></div> : null}
-            {atStart ? <div className="fn-idle"><span>{demo ? "Press Play to hear the song" : "Press Play to start"}</span></div> : null}
+            {atStart ? (
+              <div className="fn-idle">
+                <button type="button" className="fn-start" onClick={() => begin(false)}><Icon n="play" size={18} /> Play along</button>
+                <button type="button" className="fn-start ghost" onClick={() => begin(true)}><Icon n="sound" size={18} /> Hear it first</button>
+              </div>
+            ) : null}
+            {snap.finished && !snap.result && demo ? (
+              <div className="fn-result" role="dialog" aria-label="The song has finished" ref={resultRef}>
+                <div className="fn-result-card fn-turn">
+                  <span className="fn-turn-icon" aria-hidden="true"><Icon n="note" size={30} /></span>
+                  <h3>Your turn!</h3>
+                  <p>Now try it yourself. Slow it down if you need to.</p>
+                  <div className="fn-result-actions">
+                    <button type="button" className="btn btn-primary" onClick={() => begin(false, true)}>Now you play</button>
+                    <button type="button" className="btn btn-ghost" onClick={() => begin(true, true)}>Hear it again</button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {snap.finished && snap.result ? (
               <div className="fn-result" role="dialog" aria-label="Your result" ref={resultRef}>
                 <div className="fn-result-card">
@@ -1139,7 +1208,7 @@
       const y = padY + (hi - e.midi + off) * rowH, h = Math.max(2.4, rowH - 0.2);
       out[e.hand] += "M" + x.toFixed(1) + " " + y.toFixed(1) + "h" + w.toFixed(1) + "v" + h.toFixed(1) + "h-" + w.toFixed(1) + "z";
     });
-    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, W, H });
+    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, secs: (m.totalBeats / m.bpm) * 60, W, H });
   }
   function Thumb({ meta }) {
     const t = thumbPaths(meta);
@@ -1210,7 +1279,7 @@
           <div className="fn-list">
             <header className="fn-listhead">
               <h1>Falling Notes</h1>
-              <p>Pick a song, then play along on a real piano. The mic listens.</p>
+              <p>Pick a song. Play along on a real piano while the mic listens, or tap the keys on the screen. You can hear any song first.</p>
             </header>
 
             <div className="fn-listbar">
@@ -1244,6 +1313,7 @@
                         <span className="fn-card-meta">
                           <span className={"chip " + (s.level === "Easy" ? "solid-teal" : s.level === "Medium" ? "solid-butter" : "solid-terracotta")}>{s.level}</span>
                           <span className="chip">{t.bpb}/4</span>
+                          <span className="chip" title="How long the song is">{fmtTime(t.secs)}</span>
                           {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
                         </span>
                       </span>
