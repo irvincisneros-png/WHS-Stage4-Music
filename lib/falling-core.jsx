@@ -26,8 +26,11 @@
       if (!seq) return;
       let t = 0;
       seq.forEach(([n, d]) => {
-        const midi = nameToMidi(n);
-        if (midi != null) events.push({ midi, start: t, dur: d, hand });
+        // "G3+B3+C4+E4" is a chord: every note starts together
+        String(n).split("+").forEach((one) => {
+          const midi = nameToMidi(one);
+          if (midi != null) events.push({ midi, start: t, dur: d, hand });
+        });
         t += d;
       });
       total = Math.max(total, t);
