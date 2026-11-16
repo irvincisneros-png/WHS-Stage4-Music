@@ -1332,6 +1332,24 @@
     </svg>
   );
 
+  /* Is a newer build of the site live? Phones, and above all the home-screen app,
+     hold on to an old copy for a long time. The page asks the server for a fresh
+     index.html and compares the app file it names with the one that is running. */
+  const BUNDLE_RE = /assets\/index-[\w-]+\.js/;
+  function runningBundle() {
+    const el = document.querySelector('script[type="module"][src*="assets/index-"]');
+    const m = el && BUNDLE_RE.exec(el.getAttribute("src") || "");
+    return m ? m[0] : null;
+  }
+  function findNewerBuild() {
+    const mine = runningBundle();
+    if (!mine || typeof fetch !== "function") return Promise.resolve(null);
+    return fetch(window.location.pathname + "?fresh=" + Date.now(), { cache: "no-store" })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((html) => { const m = BUNDLE_RE.exec(html); return m && m[0] !== mine ? m[0] : null; })
+      .catch(() => null);
+  }
+
   /* iPhone: Safari never hides its bars for a web page, but the same page opened
      from the home screen runs with no bars at all. This card says how. */
   function InstallTip({ onClose }) {
@@ -1373,6 +1391,30 @@
     const phone = React.useMemo(() => mq("(pointer: coarse)"), []);
     const setStage = (v) => { setStageState(v); saveSettings({ stage: v }); };
     const [tip, setTip] = React.useState(false);
+    const [update, setUpdate] = React.useState(null); // the newer app file, when one is live
+    const lastCheck = React.useRef(0);
+    // look for a newer version when the app opens and whenever it comes back to the front
+    React.useEffect(() => {
+      let gone = false;
+      const check = () => {
+        if (Date.now() - lastCheck.current < 180000) return;
+        lastCheck.current = Date.now();
+        findNewerBuild().then((b) => { if (b && !gone) setUpdate(b); });
+      };
+      const onShow = () => { if (!document.hidden) check(); };
+      check();
+      document.addEventListener("visibilitychange", onShow);
+      window.addEventListener("pageshow", onShow);
+      return () => { gone = true; document.removeEventListener("visibilitychange", onShow); window.removeEventListener("pageshow", onShow); };
+    }, []);
+    /* load the new version. A plain reload can hand back the saved old page, so the
+       address gets the new version's name on it, which forces a fresh copy. */
+    function applyUpdate() {
+      const u = new URL(window.location.href), v = update.replace(/^.*index-|\.js$/g, "");
+      if (u.searchParams.get("v") === v) { window.location.reload(); return; }
+      u.searchParams.set("v", v);
+      window.location.replace(u.toString());
+    }
     // a phone whose browser cannot go full screen (iPhone Safari) and is not yet opened from the home screen
     const needsInstall = React.useMemo(() => phone && !canFs
       && !(window.navigator.standalone === true || mq("(display-mode: standalone)") || mq("(display-mode: fullscreen)")), []);
@@ -1488,6 +1530,13 @@
             </header>
 
             <div className="fn-lib-scroll">
+              {update ? (
+                <div className="fn-updatebar" role="status">
+                  <Icon n="restart" size={20} />
+                  <span><strong>A new version is ready.</strong> Update to get the latest songs and fixes.</span>
+                  <button type="button" className="fn-cta" onClick={applyUpdate}>Update now</button>
+                </div>
+              ) : null}
               <section className="fn-hero">
                 <div className="fn-hero-text">
                   <h2>What will you play today?</h2>

@@ -2863,6 +2863,12 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
 .fn-tip p { margin: 0 0 14px; color: var(--ink-soft); font-size: .88rem; line-height: 1.4; }
 .fn-tip .fn-cta { width: 100%; }
 
+/* ----- "a new version is ready" ----- */
+.fn-updatebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px 14px 12px 16px; border-radius: 18px; background: color-mix(in srgb, var(--terracotta) 16%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--terracotta) 55%, transparent); color: var(--ink); line-height: 1.35; animation: fn-card-in .3s var(--ease-out); }
+.fn-updatebar > svg { flex: none; color: var(--terracotta); }
+.fn-updatebar > span { flex: 1 1 220px; min-width: 0; }
+.fn-updatebar .fn-cta { min-height: 42px; }
+
 /* ----- song library ----- */
 .fn-lib-scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: clamp(18px, 3.2cqw, 34px) max(clamp(16px, 4cqw, 48px), env(safe-area-inset-left)) 56px; }
 .fn-lib-scroll > * { max-width: 1240px; margin-left: auto; margin-right: auto; }
@@ -3060,6 +3066,6 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
   .fn-card, .fn-resume, .fn-play, .fn-start, .fn-cta, .fn-fill, .fn-switch-track, .fn-switch-track span, .fn-mic.on i, .fn-card-play { transition: none !important; }
   .fn-card:hover, .fn-card:focus-visible, .fn-resume:hover { transform: none; }
   .fn-heard, .fn-count span, .fn-waitchip i, .fn-result, .fn-result-card, .fn-newbest, .fn-ok, .fn-backdrop, .fn-drawer, .fn-toast,
-  .fn-result-card .fn-stars.pop .on, .fn-tip-layer, .fn-tip { animation: none !important; }
+  .fn-result-card .fn-stars.pop .on, .fn-tip-layer, .fn-tip, .fn-updatebar { animation: none !important; }
   .fn-heard { opacity: 1; }
 }
