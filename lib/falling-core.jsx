@@ -154,7 +154,7 @@
       events.forEach((e) => { e.start -= cut; });
     }
     const end = events.reduce((m, e) => Math.max(m, e.start + e.dur), 0);
-    return { events, bpb, bpm, totalBeats: Math.max(1, Math.ceil(end / bpb - 1e-9)) * bpb, format, ppq };
+    return { events, bpb, bpm, totalBeats: Math.max(1, Math.ceil(end / bpb - 1e-9)) * bpb, format, ppq, sig: sig ? [sig.num, sig.den] : null };
   }
 
   /* ---------- DSP: expected-note verification ----------

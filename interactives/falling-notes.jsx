@@ -36,7 +36,7 @@
       const s = packed[k], m = s.m;
       out.push({
         key: k, name: s.name, tag: s.tag, level: s.level || "Hard", song: { note: s.note },
-        model: { bpb: m.b, bpm: m.p, totalBeats: m.t, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R" })) },
+        model: { bpb: m.b, bpm: m.p, totalBeats: m.t, sig: m.s || null, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R" })) },
       });
     });
     return out;
@@ -143,7 +143,7 @@
     notes.sort((a, b) => a.start - b.start || a.midi - b.midi);
     const g = {
       meta, key: meta.key, name: meta.name, bpm: model.bpm, bpb: model.bpb,
-      totalBeats: model.totalBeats, notes,
+      totalBeats: model.totalBeats, notes, sig: model.sig || null,
       opts: { hands: "B", wait: true, speed: 1, metro: false, labels: true, otherHand: false, demo: false, loop: false, loopStart: 1, loopEnd: model.totalBeats / model.bpb },
       flash: {}, tap: {}, geo: null,
     };
@@ -793,13 +793,76 @@
       it.heads.sort((a, b) => a.step - b.step);
       const mid = STAFF_BOT[it.staff] + 4, lo = it.heads[0].step, hi = it.heads[it.heads.length - 1].step;
       it.up = (mid - lo) > (hi - mid); // stem goes up when the notes sit low on the stave
-      // notes a step apart cannot share a column: the second one sits on the other side of the stem
+    });
+    items.sort((a, b) => a.start - b.start);
+    const sig = g.sig || [bpb, 4];
+    const compound = sig[1] === 8 && sig[0] >= 6 && sig[0] % 3 === 0; // 6/8, 9/8, 12/8: the beat is three quavers
+    const unit = compound ? 1.5 : 1;                                  // one beat, counted in crotchets
+    const staves = mode === "both" ? ["treble", "bass"] : [mode];
+    const grid = (t) => Math.round(t * 8) / 8;
+
+    // beams: short notes inside one beat are joined by a beam instead of each carrying a flag
+    staves.forEach((st) => {
+      const list = items.filter((it) => it.staff === st), together = new Map();
+      list.forEach((it) => { const key = Math.round(it.start * 32); together.set(key, (together.get(key) || 0) + 1); });
+      let run = [];
+      const flush = () => {
+        if (run.length > 1) {
+          const mid = STAFF_BOT[st] + 4; let far = 0;
+          run.forEach((it) => { [it.heads[0].step, it.heads[it.heads.length - 1].step].forEach((p) => { if (Math.abs(p - mid) > Math.abs(far)) far = p - mid; }); });
+          const beam = { items: run, up: far < 0, frame: -1, drawn: -1 };
+          run.forEach((it) => { it.beam = beam; it.up = beam.up; });
+        }
+        run = [];
+      };
+      list.forEach((it) => {
+        const ok = it.val.flags > 0 && together.get(Math.round(it.start * 32)) === 1, prev = run[run.length - 1];
+        if (prev && ok && Math.floor(grid(it.start) / unit + 1e-6) === Math.floor(grid(prev.start) / unit + 1e-6)
+          && Math.abs(it.start - (prev.start + prev.val.beats)) < 0.09) run.push(it);
+        else { flush(); if (ok) run.push(it); }
+      });
+      flush();
+    });
+    // notes a step apart cannot share a column: the second one sits on the other side of the stem
+    items.forEach((it) => {
       let prev = null;
       if (it.up) it.heads.forEach((h) => { h.side = prev && h.step - prev.step === 1 && !prev.side ? 1 : 0; prev = h; });
       else for (let i = it.heads.length - 1; i >= 0; i--) { const h = it.heads[i]; h.side = prev && prev.step - h.step === 1 && !prev.side ? -1 : 0; prev = h; }
     });
-    items.sort((a, b) => a.start - b.start);
-    return { k, mode, items, minBeats: Math.max(0.25, minBeats) };
+
+    // rests: the silences in each hand, bar by bar. A song played freely (not on the
+    // beat grid) only gets its longer rests, or the stave would fill with tiny ones.
+    let onGrid = 0;
+    notes.forEach((n) => { if (Math.abs(n.start * 4 - Math.round(n.start * 4)) < 0.13) onGrid++; });
+    const freeTime = notes.length > 0 && onGrid / notes.length < 0.85;
+    const rests = [], bars = Math.round(g.totalBeats / bpb), sizes = compound ? [3, 1.5, 0.5, 0.25] : [4, 2, 1, 0.5, 0.25];
+    staves.forEach((st) => {
+      const spans = items.filter((it) => it.staff === st).map((it) => { const a = Math.round(it.start * 4) / 4; return [a, a + it.val.beats]; }).sort((x, y) => x[0] - y[0]);
+      let si = 0;
+      for (let b = 0; b < bars; b++) {
+        const b0 = b * bpb, b1 = b0 + bpb, gaps = [];
+        while (si < spans.length && spans[si][1] <= b0 + 0.01) si++;
+        let p = b0;
+        for (let i = si; i < spans.length && spans[i][0] < b1 - 0.01; i++) {
+          if (spans[i][0] > p + 0.01) gaps.push([p, spans[i][0]]);
+          p = Math.max(p, Math.min(b1, spans[i][1]));
+        }
+        if (p < b1 - 0.01) gaps.push([p, b1]);
+        if (gaps.length === 1 && gaps[0][0] <= b0 + 0.01 && gaps[0][1] >= b1 - 0.01) { rests.push({ staff: st, start: b0, beats: bpb, bar: true }); continue; }
+        gaps.forEach(([a, z]) => {
+          let q = a;
+          while (z - q > 0.2) {
+            let v = 0;
+            for (const o of sizes) { const r = (q - b0) / o; if (o <= z - q + 0.01 && Math.abs(r - Math.round(r)) < 0.02) { v = o; break; } }
+            if (!v) break;
+            if (!(freeTime && v < 1)) rests.push({ staff: st, start: q, beats: v, bar: false });
+            q += v;
+          }
+        });
+      }
+    });
+    rests.sort((a, b) => a.start - b.start);
+    return { k, mode, items, rests, sig, compound, minBeats: Math.max(0.25, minBeats) };
   }
 
   function staveColors(dark) {
@@ -860,6 +923,32 @@
     c.restore();
   }
 
+  /* rests, drawn as shapes. yMid = the middle line of the stave. */
+  function drawRest(c, beats, x, yMid, s, color) {
+    c.save(); c.translate(x, yMid); c.scale(s, -s);
+    c.strokeStyle = color; c.fillStyle = color; c.lineJoin = "round";
+    const stroke = (w, cap, fn) => { c.lineWidth = w; c.lineCap = cap; c.beginPath(); fn(); c.stroke(); };
+    const dot = (dx, dy) => { c.beginPath(); c.arc(dx, dy, 0.15, 0, 6.2832); c.fill(); };
+    if (beats >= 3.99) c.fillRect(-0.62, 0.5, 1.24, 0.5);                  // semibreve rest: hangs from the fourth line
+    else if (beats >= 1.99) { c.fillRect(-0.62, 0, 1.24, 0.5); if (beats >= 2.99) dot(0.95, 0.25); } // minim rest: sits on the middle line
+    else if (beats >= 0.99) {                                               // crotchet rest
+      stroke(0.13, "round", () => { c.moveTo(-0.12, 1.5); c.lineTo(0.32, 0.82); });
+      stroke(0.36, "butt", () => { c.moveTo(0.34, 0.86); c.lineTo(-0.24, 0.1); });
+      stroke(0.13, "round", () => { c.moveTo(-0.22, 0.12); c.lineTo(0.3, -0.42); });
+      stroke(0.2, "round", () => { c.moveTo(0.3, -0.42); c.bezierCurveTo(-0.5, -0.18, -0.62, -1.05, 0.02, -1.38); });
+      if (beats >= 1.49) dot(0.8, 0.25);
+    } else {                                                                // quaver and semiquaver rests
+      const two = beats < 0.49, x1 = two ? 0.5 : 0.42, y1 = 0.62, x2 = two ? -0.22 : -0.08, y2 = two ? -2.02 : -1.05;
+      stroke(0.13, "round", () => { c.moveTo(x1, y1); c.lineTo(x2, y2); });
+      for (let i = 0; i < (two ? 2 : 1); i++) {
+        const ox = -0.273 * i, oy = -i;
+        c.beginPath(); c.arc(x1 - 0.78 + ox, y1 - 0.2 + oy, 0.21, 0, 6.2832); c.fill();
+        stroke(0.12, "round", () => { c.moveTo(x1 - 0.78 + ox, y1 - 0.33 + oy); c.bezierCurveTo(x1 - 0.5 + ox, y1 - 0.42 + oy, x1 - 0.17 + ox, y1 - 0.27 + oy, x1 + ox, y1 + oy); });
+      }
+    }
+    c.restore();
+  }
+
   function drawStave(c, g, W, H, dark) {
     const S = g.stave || (g.stave = buildStave(g)), col = staveColors(dark), both = S.mode === "both";
     const bpb = g.bpb, beat = g.beat;
@@ -870,7 +959,7 @@
     const staves = both ? ["treble", "bass"] : [S.mode];
     const yOf = (staff, step) => top[staff] + 4 * s - (step - STAFF_BOT[staff]) * s / 2;
     const nk = Math.abs(S.k), xLeft = Math.max(8, s * 0.9), xKey = xLeft + 3.4 * s, xTime = xKey + nk * 1.05 * s + (nk ? 0.5 * s : 0);
-    const headEnd = xTime + 2.3 * s, xNow = headEnd + 2.4 * s;
+    const headEnd = xTime + (S.sig[0] > 9 ? 3.1 : 2.3) * s, xNow = headEnd + 2.4 * s;
     const ppb = Math.min(16 * s, Math.max((W - xNow) / (4 * bpb), (1.9 * s) / S.minBeats));
     const yTop = top[staves[0]], yBot = top[staves[staves.length - 1]] + 4 * s;
     const lines = (x1, x2) => {
@@ -880,6 +969,27 @@
 
     c.clearRect(0, 0, W, H);
     lines(headEnd, W);
+    const hw = 0.6 * s, frame = (S.frame = (S.frame || 0) + 1);
+    /* where a beam runs this frame: it follows the notes, never too steep, and
+       slides away from the note heads until every stem is long enough */
+    const beamOf = (bm) => {
+      if (bm.frame === frame) return bm;
+      bm.frame = frame;
+      const its = bm.items, up = bm.up, n = its.length;
+      const sx = (it) => xNow + (it.start - beat) * ppb + (up ? hw - 0.05 * s : -hw + 0.05 * s);
+      const tip = (it) => (up ? yOf(it.staff, it.heads[it.heads.length - 1].step) - 3.1 * s : yOf(it.staff, it.heads[0].step) + 3.1 * s);
+      const x0 = sx(its[0]), x1 = sx(its[n - 1]);
+      let slope = x1 > x0 ? (tip(its[n - 1]) - tip(its[0])) / (x1 - x0) : 0;
+      if (Math.abs(slope * (x1 - x0)) > s) slope = (Math.sign(slope) * s) / (x1 - x0);
+      let y0 = tip(its[0]);
+      its.forEach((it) => { const at = y0 + slope * (sx(it) - x0), t = tip(it); if (up ? at > t : at < t) y0 += t - at; });
+      bm.x0 = x0; bm.x1 = x1; bm.y0 = y0; bm.slope = slope; bm.xs = its.map(sx);
+      return bm;
+    };
+    const beamBar = (bm, xa, xb, off) => { // one beam (or part of one) as a slanted bar
+      const t = 0.48 * s * (bm.up ? 1 : -1), o = off * (bm.up ? 1 : -1), ya = bm.y0 + bm.slope * (xa - bm.x0) + o, yb = bm.y0 + bm.slope * (xb - bm.x0) + o;
+      c.beginPath(); c.moveTo(xa, ya); c.lineTo(xb, yb); c.lineTo(xb, yb + t); c.lineTo(xa, ya + t); c.closePath(); c.fill();
+    };
 
     // bar lines and bar numbers
     c.font = "600 " + Math.max(9, Math.round(s * 1.05)) + "px " + FONT; c.textAlign = "left"; c.textBaseline = "alphabetic";
@@ -893,17 +1003,17 @@
     }
 
     // notes
+    const gone = (n) => n.status === "hit" || n.status === "skip";
     const items = S.items, tMin = beat - (xNow - headEnd + 2 * s) / ppb, tMax = beat + (W - xNow + 2 * s) / ppb;
     let lo = 0, hi = items.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (items[m].start < tMin) lo = m + 1; else hi = m; }
-    const hw = 0.6 * s;
+    while (lo > 0 && items[lo - 1].beam && items[lo - 1].beam === (items[lo] || {}).beam) lo--; // do not cut a beamed group in half
     for (let i = lo; i < items.length; i++) {
       const it = items[i];
       if (it.start > tMax) break;
       const x = xNow + (it.start - beat) * ppb, st = it.staff, v = it.val, heads = it.heads;
       const past = x < xNow - 1 ? Math.max(0, 1 - (xNow - x) / (xNow - headEnd)) : 1;
       const first = heads[0].n, hand = first.hand === "R" ? col.R : col.L;
-      const gone = (n) => n.status === "hit" || n.status === "skip";
       const allHit = heads.every((h) => gone(h.n));
       const base = (allHit ? 0.38 : 1) * past;
       if (base <= 0.02) continue;
@@ -916,12 +1026,27 @@
       const yLo = yOf(st, lowest), yHi = yOf(st, highest);
       c.strokeStyle = hand; c.fillStyle = hand;
       if (v.head !== "w") {
-        const xs = it.up ? x + hw - 0.05 * s : x - hw + 0.05 * s, tip = it.up ? yHi - 3.3 * s : yLo + 3.3 * s;
+        const bm = it.beam ? beamOf(it.beam) : null;
+        const xs = it.up ? x + hw - 0.05 * s : x - hw + 0.05 * s;
+        const tip = bm ? bm.y0 + bm.slope * (xs - bm.x0) : it.up ? yHi - 3.3 * s : yLo + 3.3 * s;
         c.lineWidth = Math.max(1, 0.11 * s); c.lineCap = "butt";
         c.beginPath(); c.moveTo(xs, it.up ? yLo : yHi); c.lineTo(xs, tip); c.stroke();
+        if (bm && bm.drawn !== frame) {
+          // the whole beam is drawn once, with the first of its notes we meet
+          bm.drawn = frame;
+          const its = bm.items, last = its.length - 1;
+          c.globalAlpha = (its.every((q) => q.heads.every((h) => gone(h.n))) ? 0.38 : 1) * past;
+          beamBar(bm, bm.xs[0], bm.xs[last], 0);
+          for (let q = 0; q <= last; q++) {
+            if (its[q].val.flags < 2) continue; // semiquavers get a second beam
+            if (q < last && its[q + 1].val.flags >= 2) beamBar(bm, bm.xs[q], bm.xs[q + 1], 0.78 * s);
+            else if (!(q > 0 && its[q - 1].val.flags >= 2)) { const dir = q < last ? 1 : -1; beamBar(bm, Math.min(bm.xs[q], bm.xs[q] + dir * 0.95 * s), Math.max(bm.xs[q], bm.xs[q] + dir * 0.95 * s), 0.78 * s); }
+          }
+          c.globalAlpha = base;
+        }
         const d = it.up ? 1 : -1;
         c.lineWidth = Math.max(1.2, 0.17 * s); c.lineCap = "round";
-        for (let f = 0; f < v.flags; f++) {
+        for (let f = 0; f < (bm ? 0 : v.flags); f++) {
           const ty = tip + d * f * 0.8 * s;
           c.beginPath(); c.moveTo(xs, ty);
           c.bezierCurveTo(xs + 0.15 * s, ty + d * 0.9 * s, xs + 1.05 * s, ty + d * 1.15 * s, xs + 0.72 * s, ty + d * 2.2 * s);
@@ -963,6 +1088,23 @@
       c.globalAlpha = 1;
     }
 
+    // rests
+    const rests = S.rests;
+    lo = 0; hi = rests.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (rests[m].start < tMin - bpb) lo = m + 1; else hi = m; }
+    for (let i = lo; i < rests.length; i++) {
+      const r = rests[i];
+      if (r.start > tMax) break;
+      // a whole-bar rest sits in the middle of its bar
+      const x = xNow + ((r.bar ? r.start + r.beats / 2 : r.start) - beat) * ppb - (r.bar ? 1.3 * s : 0);
+      if (x > W + 2 * s) continue;
+      const past = x < xNow - 1 ? Math.max(0, 1 - (xNow - x) / (xNow - headEnd)) : 1;
+      c.globalAlpha = (r.start + r.beats <= beat + 1e-6 ? 0.38 : 0.9) * past;
+      if (c.globalAlpha <= 0.02) continue;
+      drawRest(c, r.bar ? 4 : r.beats, x, top[r.staff] + 2 * s, s, r.staff === "treble" ? col.R : col.L);
+    }
+    c.globalAlpha = 1;
+
     // the "now" line
     c.fillStyle = col.now; c.globalAlpha = 0.9;
     c.fillRect(Math.round(xNow) - 1, yTop - 1.6 * s, 2, yBot - yTop + 3.2 * s);
@@ -982,8 +1124,9 @@
       const kind = S.k > 0 ? "sharp" : "flat";
       for (let i = 0; i < nk; i++) drawAccidental(c, S.k > 0 ? 1 : -1, xKey + (i + 0.5) * 1.05 * s, yOf(st, KEYSIG_STEP[kind][i] - (st === "bass" ? 14 : 0)), s, col.ink);
       c.fillStyle = col.ink; c.font = "800 " + Math.round(2.3 * s) + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
-      c.fillText(String(bpb), xTime + 1.0 * s, top[st] + 1.05 * s);
-      c.fillText("4", xTime + 1.0 * s, top[st] + 3.05 * s);
+      const xT = xTime + (S.sig[0] > 9 ? 1.4 : 1.0) * s;
+      c.fillText(String(S.sig[0]), xT, top[st] + 1.05 * s);
+      c.fillText(String(S.sig[1]), xT, top[st] + 3.05 * s);
     });
     c.textAlign = "left"; c.textBaseline = "alphabetic";
   }
@@ -1504,7 +1647,7 @@
     const done = (snap.hits || 0) + (snap.misses || 0);
     const acc = done ? Math.round(100 * (snap.hits || 0) / done) : null;
     const pos = Math.max(0, Math.min(1, (snap.beat || 0) / g.totalBeats));
-    const sub = (meta.level || "Medium") + " · " + g.bpb + "/4 · " + g.bpm + " bpm";
+    const sub = (meta.level || "Medium") + " · " + (g.sig ? g.sig[0] + "/" + g.sig[1] : g.bpb + "/4") + " · " + g.bpm + " bpm";
     const atStart = !snap.playing && !snap.finished && !(g.beat > homeBeat(g) + 0.01);
     const lvl = Math.round((snap.level || 0) * 100);
     const res = snap.result;
@@ -1695,7 +1838,7 @@
       const y = padY + (hi - e.midi + off) * rowH, h = Math.max(2.4, rowH - 0.2);
       out[e.hand] += "M" + x.toFixed(1) + " " + y.toFixed(1) + "h" + w.toFixed(1) + "v" + h.toFixed(1) + "h-" + w.toFixed(1) + "z";
     });
-    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, secs: (m.totalBeats / m.bpm) * 60, W, H });
+    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, sig: m.sig ? m.sig[0] + "/" + m.sig[1] : m.bpb + "/4", secs: (m.totalBeats / m.bpm) * 60, W, H });
   }
   function Thumb({ meta }) {
     const t = thumbPaths(meta);
@@ -1987,7 +2130,7 @@
                             <span className="fn-card-by">{byline(s)}</span>
                             <span className="fn-card-meta">
                               <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
-                              <span className="fn-sig">{t.bpb}/4</span>
+                              <span className="fn-sig">{t.sig}</span>
                               {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
                             </span>
                           </span>
