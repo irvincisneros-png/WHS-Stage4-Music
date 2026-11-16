@@ -1,0 +1,17 @@
+{
+  "name": "Falling Notes",
+  "short_name": "Falling Notes",
+  "description": "Play piano songs along with falling notes. Woonona High School Music.",
+  "start_url": "../#/year7/falling",
+  "scope": "../",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#070a16",
+  "theme_color": "#070a16",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

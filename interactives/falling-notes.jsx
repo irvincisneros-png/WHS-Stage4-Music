@@ -1,4 +1,5 @@
-/* Falling Notes: Synthesia-style piano trainer that LISTENS through the mic.
+/* Falling Notes: a piano trainer with falling notes that LISTENS through the mic.
+   It runs as its own full-window app inside the site (song library + player).
    Pure logic (MIDI parser, note verification DSP, detector) lives in
    lib/falling-core.jsx.  Here: song list, game engine, canvas, controls.
    Nothing is uploaded: MIDI files and microphone audio stay in the browser. */
@@ -29,6 +30,15 @@
       const s = extra[k];
       out.push({ key: k, name: s.name, tag: s.tag, level: s.level || "Medium", song: s });
     });
+    // class arrangements packed from MIDI files (lib/falling-midi-songs.jsx)
+    const packed = window.FALLING_SONGS_MIDI || {};
+    Object.keys(packed).forEach((k) => {
+      const s = packed[k], m = s.m;
+      out.push({
+        key: k, name: s.name, tag: s.tag, level: s.level || "Hard", song: { note: s.note },
+        model: { bpb: m.b, bpm: m.p, totalBeats: m.t, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R" })) },
+      });
+    });
     return out;
   }
   const modelOf = (meta) => meta.model || FC.songToEvents(meta.song);
@@ -50,6 +60,7 @@
     if (!b[k] || pct > b[k].pct) { b[k] = { pct, stars: FC.starsFor(pct) }; window.Students.writeNS("fallingNotes.best", b); }
   }
   const readSettings = () => (window.Students && window.Students.readNS("fallingNotes.settings", {})) || {};
+  const saveSettings = (patch) => { if (window.Students) window.Students.writeNS("fallingNotes.settings", Object.assign({}, readSettings(), patch)); };
 
   /* ------------------------------------------------------------ microphone / test synth */
   const MIC = {
@@ -278,25 +289,47 @@
   }
 
   /* ------------------------------------------------------------ canvas */
-  function makeGeo(g, W, H) {
+  const WHITE_PC = { 0: 1, 2: 1, 4: 1, 5: 1, 7: 1, 9: 1, 11: 1 };
+  const isWhite = (m) => !!WHITE_PC[((m % 12) + 12) % 12];
+  const KEY_RATIO = 5;   // white key height : width. A real key is about 6.4 : 1.
+  const BLACK_SHIFT = { 1: -0.1, 3: 0.1, 6: -0.13, 8: 0, 10: 0.13 }; // black keys sit a little off-centre, as on a real piano
+
+  /* The keyboard is sized first and the number of keys follows from real key
+     proportions, so a wide screen shows more octaves instead of fatter keys.
+     `coarse` = touch screen: keys stay wide enough for a finger. */
+  function makeGeo(g, W, H, coarse) {
     let lo = 127, hi = 0;
     g.notes.forEach((n) => { if (n.midi < lo) lo = n.midi; if (n.midi > hi) hi = n.midi; });
-    let a = Math.floor(lo / 12) * 12, b = Math.floor(hi / 12) * 12 + 11;
+    if (lo > hi) { lo = 60; hi = 72; }
+    lo = Math.max(21, Math.min(108, lo)); hi = Math.max(21, Math.min(108, hi));
+    if (!isWhite(lo)) lo--;
+    if (!isWhite(hi)) hi++;
+    const down = (m) => { do m--; while (!isWhite(m)); return m; };
+    const up = (m) => { do m++; while (!isWhite(m)); return m; };
+    let a = lo, b = hi, have = 0;
+    for (let m = a; m <= b; m++) if (isWhite(m)) have++;
+    let kbH = Math.round(Math.max(84, Math.min(240, H * (H < 420 ? 0.36 : 0.27))));
+    const want = Math.max(have + 2, Math.min(52, Math.round(W / Math.max(kbH / KEY_RATIO, coarse ? 26 : 0))));
     let flip = 0;
-    while (b - a + 1 < 24) { if (flip++ % 2 === 0 && b < 104) b += 12; else if (a >= 24) a -= 12; else b += 12; }
-    const WHITE = { 0: 1, 2: 1, 4: 1, 5: 1, 7: 1, 9: 1, 11: 1 };
+    while (have < want) {
+      const canUp = b < 108, canDown = a > 21;
+      if (!canUp && !canDown) break;
+      if ((flip++ % 2 === 0 && canUp) || !canDown) b = up(b); else a = down(a);
+      have++;
+    }
     const whites = [];
-    for (let m = a; m <= b; m++) if (WHITE[m % 12]) whites.push(m);
+    for (let m = a; m <= b; m++) if (isWhite(m)) whites.push(m);
     const kw = W / whites.length, idx = {};
+    kbH = Math.round(Math.max(72, Math.min(kbH, kw * 6.4)));
     whites.forEach((m, i) => { idx[m] = i; });
     const keys = {};
     whites.forEach((m) => { keys[m] = { x: idx[m] * kw, w: kw, black: false }; });
-    for (let m = a; m <= b; m++) {
-      if (WHITE[m % 12]) continue;
-      const bw = kw * 0.62;
-      keys[m] = { x: (idx[m - 1] + 1) * kw - bw / 2, w: bw, black: true };
+    const bw = kw * 0.58;
+    for (let m = a + 1; m < b; m++) {
+      if (isWhite(m)) continue;
+      keys[m] = { x: (idx[m - 1] + 1) * kw - bw / 2 + (BLACK_SHIFT[m % 12] || 0) * bw, w: bw, black: true };
     }
-    return { W, H, a, b, whites, kw, keys, kbH: Math.max(72, Math.min(126, Math.round(H * 0.22))) };
+    return { W, H, a, b, whites, kw, keys, kbH, blackH: Math.round(kbH * 0.63) };
   }
 
   /* which key is at (x, y) on the canvas? null above the keyboard */
@@ -304,7 +337,7 @@
     if (!geo) return null;
     const hitY = geo.H - geo.kbH;
     if (y < hitY || y > geo.H || x < 0 || x >= geo.W) return null;
-    if (y < hitY + geo.kbH * 0.62) {
+    if (y < hitY + geo.blackH) {
       for (let m = geo.a; m <= geo.b; m++) { const k = geo.keys[m]; if (k && k.black && x >= k.x && x < k.x + k.w) return m; }
     }
     const m = geo.whites[Math.min(geo.whites.length - 1, Math.floor(x / geo.kw))];
@@ -314,23 +347,23 @@
 
   /* ------------------------------------------------------------ stage look (canvas) */
   const FONT = '"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
+  /* right hand = blue, left hand = orange: far apart in hue and still distinct for colour-blind students */
   const HANDS = {
-    R: { top: "#5b8cff", bot: "#2762e0", glow: "rgba(91,140,255,0.95)", flat: "#5b8cff", beam: "91,140,255", idx: 0 },
-    L: { top: "#34e0c4", bot: "#0f8a7e", glow: "rgba(52,224,196,0.9)", flat: "#34e0c4", beam: "52,224,196", idx: 1 },
+    R: { top: "#7aa2ff", bot: "#2c5fe6", topB: "#4f78e6", botB: "#1c45b8", glow: "rgba(91,140,255,0.95)", flat: "#5b8cff", deep: "#2c5fe6", beam: "91,140,255", idx: 0 },
+    L: { top: "#ffc46b", bot: "#f0871f", topB: "#f2a23c", botB: "#c96a12", glow: "rgba(255,166,61,0.9)", flat: "#ffa63d", deep: "#e8801a", beam: "255,166,61", idx: 1 },
   };
   const HAND_BY_IDX = [HANDS.R, HANDS.L];
   const RED = "#ef4444";
   const SPARKS = 192, SPARK_LIFE = 450, FLASH_MS = 450, MISS_MS = 380, TAP_MS = 240;
 
   function stageColors(stage) {
-    const siteDark = document.documentElement.dataset.theme === "dark";
     const dark = stage === "dark";
     return {
-      stage, siteDark, dark,
-      top: dark ? "#0e1222" : siteDark ? "#ece9e2" : "#fbfaf7",
-      bot: dark ? "#161b30" : siteDark ? "#dedbd2" : "#f1efe8",
-      barLine: dark ? "rgba(255,255,255,0.07)" : "rgba(30,40,70,0.11)",
-      beatLine: dark ? "rgba(255,255,255,0.028)" : "rgba(30,40,70,0.045)",
+      stage, dark,
+      top: dark ? "#05070f" : "#fbfaf7",
+      bot: dark ? "#131a36" : "#eeece4",
+      barLine: dark ? "rgba(255,255,255,0.09)" : "rgba(30,40,70,0.13)",
+      beatLine: dark ? "rgba(255,255,255,0.03)" : "rgba(30,40,70,0.05)",
       pill: dark ? "rgba(255,255,255,0.09)" : "rgba(30,40,70,0.08)",
       pillText: dark ? "rgba(205,214,240,0.8)" : "rgba(40,50,80,0.7)",
     };
@@ -348,19 +381,19 @@
 
   /* rounded rectangle with only the bottom corners rounded (keys) */
   function rrBottom(c, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
     c.beginPath(); c.moveTo(x, y); c.lineTo(x + w, y); c.lineTo(x + w, y + h - r);
     c.arcTo(x + w, y + h, x + w - r, y + h, r); c.lineTo(x + r, y + h); c.arcTo(x, y + h, x, y + h - r, r); c.closePath();
   }
   function rr(c, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
     c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
     c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
   }
 
   /* everything that only changes with size / theme is built once here */
   function prepare(fx, c, geo, col, dpr) {
-    const { W, H, kbH, keys } = geo, hitY = H - kbH, bh = kbH * 0.62;
+    const { W, H, kbH, keys, kw } = geo, hitY = H - kbH, bh = geo.blackH, dark = col.dark;
     const bg = fx.bg || (fx.bg = document.createElement("canvas"));
     bg.width = Math.max(1, Math.round(W * dpr)); bg.height = Math.max(1, Math.round(hitY * dpr));
     const b = bg.getContext("2d");
@@ -368,30 +401,51 @@
     const sky = b.createLinearGradient(0, 0, 0, hitY);
     sky.addColorStop(0, col.top); sky.addColorStop(1, col.bot);
     b.fillStyle = sky; b.fillRect(0, 0, W, hitY);
+    // every second octave is a touch lighter, so each C is easy to find
+    geo.whites.forEach((m) => {
+      if (m % 12 !== 0 || (Math.floor(m / 12) % 2)) return;
+      b.fillStyle = dark ? "rgba(255,255,255,0.022)" : "rgba(30,40,70,0.022)";
+      b.fillRect(keys[m].x, 0, Math.min(W - keys[m].x, kw * 7), hitY);
+    });
     fx.blackL = [];
     for (let m = geo.a; m <= geo.b; m++) if (keys[m] && keys[m].black) fx.blackL.push(m);
-    // black-key columns a touch darker
-    b.fillStyle = col.dark ? "rgba(0,0,0,0.20)" : "rgba(30,40,70,0.022)";
+    // black-key lanes a touch darker
+    b.fillStyle = dark ? "rgba(0,0,0,0.24)" : "rgba(30,40,70,0.03)";
     fx.blackL.forEach((m) => { b.fillRect(keys[m].x, 0, keys[m].w, hitY); });
     // lane lines, brighter at each C
     geo.whites.forEach((m) => {
       const x = Math.round(keys[m].x);
       const isC = m % 12 === 0;
-      b.fillStyle = col.dark ? (isC ? "rgba(255,255,255,0.11)" : "rgba(255,255,255,0.03)") : (isC ? "rgba(30,40,70,0.14)" : "rgba(30,40,70,0.05)");
+      b.fillStyle = dark ? (isC ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.028)") : (isC ? "rgba(30,40,70,0.15)" : "rgba(30,40,70,0.05)");
       b.fillRect(x, 0, 1, hitY);
     });
+    // soft light rising from the keyboard, and a darker top edge
+    if (dark) {
+      const riseH = Math.min(260, hitY * 0.55), rise = b.createLinearGradient(0, hitY - riseH, 0, hitY);
+      rise.addColorStop(0, "rgba(91,140,255,0)"); rise.addColorStop(1, "rgba(91,140,255,0.13)");
+      b.fillStyle = rise; b.fillRect(0, hitY - riseH, W, riseH);
+      const topH = Math.min(120, hitY * 0.3), top = b.createLinearGradient(0, 0, 0, topH);
+      top.addColorStop(0, "rgba(0,0,0,0.5)"); top.addColorStop(1, "rgba(0,0,0,0)");
+      b.fillStyle = top; b.fillRect(0, 0, W, topH);
+    }
     const g = {};
     const ng = (stops) => { const q = c.createLinearGradient(0, 0, 0, 100); stops.forEach((s) => q.addColorStop(s[0], s[1])); return q; };
     g.R = ng([[0, HANDS.R.top], [1, HANDS.R.bot]]);
     g.L = ng([[0, HANDS.L.top], [1, HANDS.L.bot]]);
+    g.Rb = ng([[0, HANDS.R.topB], [1, HANDS.R.botB]]);   // notes on black keys are a shade deeper
+    g.Lb = ng([[0, HANDS.L.topB], [1, HANDS.L.botB]]);
     g.miss = ng([[0, "#9aa1b8"], [1, "#6c7390"]]);
-    g.white = c.createLinearGradient(0, hitY, 0, hitY + kbH); g.white.addColorStop(0, "#ffffff"); g.white.addColorStop(1, "#e8e8ee");
-    g.black = c.createLinearGradient(0, hitY, 0, hitY + bh); g.black.addColorStop(0, "#41414c"); g.black.addColorStop(0.6, "#1b1b23"); g.black.addColorStop(1, "#0a0a0e");
-    g.top = c.createLinearGradient(0, hitY, 0, hitY + 10); g.top.addColorStop(0, "rgba(0,0,0,0.30)"); g.top.addColorStop(1, "rgba(0,0,0,0)");
-    g.glow = c.createLinearGradient(0, hitY - 36, 0, hitY); g.glow.addColorStop(0, "rgba(91,140,255,0)"); g.glow.addColorStop(1, "rgba(91,140,255,0.2)");
+    const kg = (y0, y1, stops) => { const q = c.createLinearGradient(0, y0, 0, y1); stops.forEach((s) => q.addColorStop(s[0], s[1])); return q; };
+    g.white = kg(hitY, hitY + kbH, [[0, "#f3f3f7"], [0.08, "#ffffff"], [0.8, "#f4f4f8"], [1, "#dcdce6"]]);
+    g.litR = kg(hitY, hitY + kbH, [[0, "#8fb1ff"], [1, HANDS.R.deep]]);
+    g.litL = kg(hitY, hitY + kbH, [[0, "#ffd595"], [1, HANDS.L.deep]]);
+    g.black = kg(hitY, hitY + bh, [[0, "#2c2c36"], [0.8, "#17171d"], [1, "#07070a"]]);
+    g.blackTop = kg(hitY, hitY + bh, [[0, "#565664"], [0.12, "#3a3a46"], [1, "#24242c"]]);
+    g.top = kg(hitY, hitY + 16, [[0, "rgba(0,0,0,0.42)"], [1, "rgba(0,0,0,0)"]]);
+    g.lip = kg(hitY + kbH - 10, hitY + kbH, [[0, "rgba(20,24,50,0)"], [1, "rgba(20,24,50,0.2)"]]);
+    g.glow = kg(hitY - 40, hitY, [[0, "rgba(91,140,255,0)"], [1, "rgba(91,140,255,0.22)"]]);
     [["beamR", HANDS.R], ["beamL", HANDS.L]].forEach(([k, h]) => {
-      const q = c.createLinearGradient(0, hitY - 120, 0, hitY);
-      q.addColorStop(0, "rgba(" + h.beam + ",0)"); q.addColorStop(1, "rgba(" + h.beam + ",0.6)"); g[k] = q;
+      g[k] = kg(hitY - 150, hitY, [[0, "rgba(" + h.beam + ",0)"], [1, "rgba(" + h.beam + ",0.6)"]]);
     });
     fx.g = g;
   }
@@ -408,11 +462,11 @@
   }
 
   function draw(c, g, geo, col, fx, now, reduce, dpr) {
-    const { W, H, kbH, keys } = geo, hitY = H - kbH, bpb = g.bpb, look = LOOK_BARS * bpb, ppb = hitY / look, beat = g.beat;
-    const key = W + "x" + H + "|" + col.stage + col.siteDark + "|" + dpr + "|" + kbH;
+    const { W, H, kbH, keys, kw } = geo, hitY = H - kbH, bpb = g.bpb, look = LOOK_BARS * bpb, ppb = hitY / look, beat = g.beat;
+    const key = W + "x" + H + "|" + col.stage + "|" + dpr + "|" + kbH + "|" + geo.a + "-" + geo.b;
     if (fx.key !== key) { prepare(fx, c, geo, col, dpr); fx.key = key; }
-    const G = fx.g, dark = col.dark, bh = kbH * 0.62;
-    const dt = fx.lastNow ? Math.min(0.05, (now - fx.lastNow) / 1000) : 0.016; fx.lastNow = now;
+    const G = fx.g, dark = col.dark, bh = geo.blackH;
+    fx.lastNow = now;
 
     c.clearRect(0, 0, W, H);
     c.drawImage(fx.bg, 0, 0, fx.bg.width, fx.bg.height, 0, 0, W, hitY);
@@ -429,9 +483,10 @@
       const y = Math.round(hitY - (k * bpb - beat) * ppb);
       if (y < 0 || y > hitY) continue;
       c.fillStyle = col.barLine; c.fillRect(0, y, W, 1);
+      if (y < 56) continue; // keep clear of the readouts at the top of the stage
       const lab = String(k + 1), pw = lab.length * 6.5 + 12;
-      c.fillStyle = col.pill; rr(c, 6, y + 4, pw, 16, 8); c.fill();
-      c.fillStyle = col.pillText; c.fillText(lab, 6 + pw / 2, y + 12.5);
+      c.fillStyle = col.pill; rr(c, 6, y - 20, pw, 16, 8); c.fill();
+      c.fillStyle = col.pillText; c.fillText(lab, 6 + pw / 2, y - 11.5);
     }
     c.textAlign = "left";
 
@@ -462,27 +517,29 @@
       if (playing) { fx.lit[n.midi] = hnd; fx.litFade[n.midi] = scored ? 0 : 1; }
       const yb = Math.min(hitY, hitY - (n.start - beat) * ppb) - 1.5;
       const yt = Math.max(-6, hitY - (end - beat) * ppb);
-      const h = Math.max(6, yb - yt), x = k.x + 1.5, w = k.w - 3, y0 = yb - h;
+      const pad = k.black ? 0.5 : Math.min(2.5, k.w * 0.09);
+      const h = Math.max(6, yb - yt), x = k.x + pad, w = k.w - pad * 2, y0 = yb - h;
       if (w < 2) continue;
-      const r = Math.min(6, w / 3, h / 2);
+      const r = Math.min(7, w / 2.6, h / 2);
       const missed = n.status === "miss", hit = n.status === "hit";
-      c.globalAlpha = !scored ? 0.3 : missed ? 0.5 : hit ? 0.5 : 1;
+      c.globalAlpha = !scored ? 0.3 : missed ? 0.5 : hit ? 0.45 : 1;
       // glow strengthens as the note nears the hit line (dark) / soft drop shadow (light)
       if (scored && !missed && !hit) {
         if (dark) {
           const dist = hitY - yb, prox = playing ? 1 : dist <= 0 ? 1 : Math.max(0, 1 - dist / (ppb * bpb));
           if (reduce) { c.shadowColor = hnd.glow; c.shadowBlur = 6; }
-          else if (prox > 0.02) { c.shadowColor = hnd.glow; c.shadowBlur = 4 + 18 * prox; }
+          else if (prox > 0.02) { c.shadowColor = hnd.glow; c.shadowBlur = 4 + 20 * prox; }
         } else { c.shadowColor = "rgba(25,35,70,0.28)"; c.shadowBlur = 6; c.shadowOffsetY = 2; }
       } else if (!dark && scored) { c.shadowColor = "rgba(25,35,70,0.18)"; c.shadowBlur = 4; c.shadowOffsetY = 1.5; }
       rr(c, x, y0, w, h, r);
       c.save(); c.translate(0, y0); c.scale(1, h / 100);
-      c.fillStyle = missed ? G.miss : n.hand === "R" ? G.R : G.L; c.fill();
+      c.fillStyle = missed ? G.miss : n.hand === "R" ? (k.black ? G.Rb : G.R) : (k.black ? G.Lb : G.L); c.fill();
       c.restore();
       c.shadowBlur = 0; c.shadowOffsetY = 0;
-      // 1px inner highlight
+      // glass edge + a soft shine down the left side
       rr(c, x + 0.5, y0 + 0.5, w - 1, h - 1, Math.max(0, r - 0.5));
-      c.strokeStyle = "rgba(255,255,255,0.34)"; c.lineWidth = 1; c.stroke();
+      c.strokeStyle = "rgba(255,255,255,0.36)"; c.lineWidth = 1; c.stroke();
+      if (w >= 12 && h >= 12) { c.fillStyle = "rgba(255,255,255,0.17)"; rr(c, x + 2, y0 + 3, Math.max(2, w * 0.16), h - 6, 2); c.fill(); }
       if (missed && scored) { c.strokeStyle = hnd.flat; c.setLineDash([3, 3]); c.lineWidth = 1.5; rr(c, x, y0, w, h, r); c.stroke(); c.setLineDash([]); }
       // note name in a small rounded label near the bottom of the bar
       if (labelsOn && h >= 18 && w >= 8 && w < 17) {
@@ -496,7 +553,7 @@
         const lab = n._lab || (n._lab = FC.midiToLetter(n.midi));
         const fs = Math.max(11, Math.min(13, Math.floor(w * 0.42))), lw = Math.min(w - 4, lab.length * fs * 0.62 + 10);
         const ly = yb - 5 - 16;
-        c.fillStyle = "rgba(6,10,28,0.34)"; rr(c, x + w / 2 - lw / 2, ly, lw, 16, 8); c.fill();
+        c.fillStyle = "rgba(6,10,28,0.36)"; rr(c, x + w / 2 - lw / 2, ly, lw, 16, 8); c.fill();
         c.fillStyle = "#fff"; c.font = "600 " + fs + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
         c.fillText(lab, x + w / 2, ly + 8.5);
         c.textAlign = "left";
@@ -504,7 +561,7 @@
       c.globalAlpha = 1;
     }
 
-    // light beams above keys that were just played right
+    // light beams and a bloom above keys that were just played right
     const comp = c.globalCompositeOperation;
     if (!reduce) {
       if (dark) c.globalCompositeOperation = "lighter";
@@ -516,9 +573,14 @@
           if (!t) continue;
           const a = 1 - (now - t) / FLASH_MS;
           if (a <= 0) continue;
-          const k = keys[m];
+          const k = keys[m], hd = HAND_BY_IDX[fx.hand[m]];
           c.globalAlpha = (dark ? 0.9 : 0.6) * a; c.fillStyle = fx.hand[m] ? G.beamL : G.beamR;
-          c.fillRect(k.x + 1, hitY - 120, k.w - 2, 120);
+          c.fillRect(k.x + 1, hitY - 150, k.w - 2, 150);
+          const cx = k.x + k.w / 2, rad = Math.max(26, kw * 1.5) * (1.25 - 0.25 * a);
+          const bloom = c.createRadialGradient(cx, hitY, 0, cx, hitY, rad);
+          bloom.addColorStop(0, "rgba(" + hd.beam + ",0.75)"); bloom.addColorStop(1, "rgba(" + hd.beam + ",0)");
+          c.globalAlpha = (dark ? 0.85 : 0.5) * a; c.fillStyle = bloom;
+          c.fillRect(cx - rad, hitY - rad, rad * 2, rad);
         }
       }
       c.globalAlpha = 1; c.globalCompositeOperation = comp;
@@ -526,12 +588,12 @@
 
     // hit line
     if (dark) {
-      c.fillStyle = G.glow; c.fillRect(0, hitY - 36, W, 36);
-      c.shadowColor = "rgba(120,160,255,0.95)"; c.shadowBlur = 14;
-      c.fillStyle = "#a9c0ff"; c.fillRect(0, hitY - 2, W, 2.5);
+      c.fillStyle = G.glow; c.fillRect(0, hitY - 40, W, 40);
+      c.shadowColor = "rgba(120,160,255,0.95)"; c.shadowBlur = 16;
+      c.fillStyle = "#b9ccff"; c.fillRect(0, hitY - 2.5, W, 2.5);
       c.shadowBlur = 0;
     } else {
-      c.fillStyle = "rgba(39,98,224,0.75)"; c.fillRect(0, hitY - 2, W, 2.5);
+      c.fillStyle = "rgba(39,98,224,0.75)"; c.fillRect(0, hitY - 2.5, W, 2.5);
     }
 
     // wait mode: expected notes pulse at the hit line
@@ -540,60 +602,66 @@
       const wv = fx.wait[m]; if (!wv) continue;
       const k = keys[m], hnd = wv === 1 ? HANDS.R : HANDS.L;
       c.shadowColor = hnd.glow; c.shadowBlur = dark ? 18 : 8; c.globalAlpha = 0.35 + 0.6 * pulse;
-      c.fillStyle = hnd.flat; rr(c, k.x + 1.5, hitY - 9, k.w - 3, 7, 3.5); c.fill();
+      c.fillStyle = hnd.flat; rr(c, k.x + 1.5, hitY - 10, k.w - 3, 7, 3.5); c.fill();
       c.shadowBlur = 0; c.globalAlpha = 1;
     }
 
-    // keyboard base + white keys
-    c.fillStyle = "#a7a6b4"; c.fillRect(0, hitY, W, kbH);
-    const wl = geo.whites;
+    // ---- keyboard: slab, white keys, felt strip, names, black keys ----
+    c.fillStyle = "#0b0c12"; c.fillRect(0, hitY, W, kbH);
+    const wl = geo.whites, gap = kw >= 14 ? 1.2 : 0.6, wr = Math.min(5, kw * 0.16);
     for (let i = 0; i < wl.length; i++) {
       const m = wl[i], k = keys[m], L = fx.lit[m], fa = g.flash[m] ? Math.max(0, 1 - (now - g.flash[m]) / FLASH_MS) : 0;
       const ma = fx.missT[m] ? Math.max(0, 1 - (now - fx.missT[m]) / MISS_MS) : 0;
       const tp = g.tap[m] ? Math.max(0, 1 - (now - g.tap[m]) / TAP_MS) : 0;
-      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 2 : 0;
-      rrBottom(c, k.x + 0.5, hitY + press, k.w - 1, kbH - press - 0.5, 4);
+      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 3 : 0;
+      rrBottom(c, k.x + gap / 2, hitY + press, k.w - gap, kbH - press - 1.5, wr);
       c.fillStyle = G.white; c.fill();
       if (tp > 0) { c.globalAlpha = 0.2 * tp; c.fillStyle = "#1e2846"; c.fill(); }
-      if (L) { c.globalAlpha = fx.litFade[m] ? 0.28 : 0.8; c.fillStyle = L.flat; c.fill(); }
-      if (fa > 0) { c.globalAlpha = fa * 0.9; c.fillStyle = HAND_BY_IDX[fx.hand[m]].flat; c.fill(); }
+      if (L) { c.globalAlpha = fx.litFade[m] ? 0.28 : 0.9; c.fillStyle = L === HANDS.R ? G.litR : G.litL; c.fill(); }
+      if (fa > 0) { c.globalAlpha = fa * 0.9; c.fillStyle = fx.hand[m] ? G.litL : G.litR; c.fill(); }
       if (ma > 0) { c.globalAlpha = ma * 0.85; c.fillStyle = RED; c.fill(); }
-      if (fx.wait[m]) { c.globalAlpha = 0.18 + 0.3 * pulse; c.fillStyle = fx.wait[m] === 1 ? HANDS.R.flat : HANDS.L.flat; c.fill(); }
+      if (fx.wait[m]) { c.globalAlpha = 0.2 + 0.32 * pulse; c.fillStyle = fx.wait[m] === 1 ? HANDS.R.flat : HANDS.L.flat; c.fill(); }
       c.globalAlpha = 1;
     }
-    c.fillStyle = G.top; c.fillRect(0, hitY, W, 10);
+    c.fillStyle = G.lip; c.fillRect(0, hitY + kbH - 10, W, 10);
+    c.fillStyle = G.top; c.fillRect(0, hitY, W, 16);
     // key names (C keys always, the rest when "Note names" is on and keys are wide enough) + middle-C dot
     c.textAlign = "center"; c.textBaseline = "alphabetic";
-    const allNames = labelsOn && geo.kw >= 22;
+    const allNames = labelsOn && kw >= 22, fsz = kw >= 30 ? 11 : 10, ly = hitY + kbH - Math.max(8, kbH * 0.07);
     for (let i = 0; i < wl.length; i++) {
       const m = wl[i], isC = m % 12 === 0;
       if (!isC && !allNames) continue;
       const k = keys[m]; if (k.w < 13) continue;
       const on = fx.lit[m] && !fx.litFade[m];
-      c.fillStyle = on ? "rgba(255,255,255,0.95)" : isC ? "#8a8a9b" : "#b3b3c1"; c.font = (isC ? "700 " : "600 ") + "10px " + FONT;
-      c.fillText(isC ? "C" + (Math.floor(m / 12) - 1) : FC.midiToLetter(m), k.x + k.w / 2, hitY + kbH - 7);
-      if (m === 60) { c.fillStyle = on ? "#fff" : "#2762e0"; c.beginPath(); c.arc(k.x + k.w / 2, hitY + kbH - 22, 2.8, 0, 6.2832); c.fill(); }
+      c.fillStyle = on ? "rgba(255,255,255,0.96)" : isC ? "#7c7c8e" : "#b0b0bf"; c.font = (isC ? "700 " : "600 ") + fsz + "px " + FONT;
+      c.fillText(isC ? "C" + (Math.floor(m / 12) - 1) : FC.midiToLetter(m), k.x + k.w / 2, ly);
+      if (m === 60) { c.fillStyle = on ? "#fff" : "#2762e0"; c.beginPath(); c.arc(k.x + k.w / 2, ly - fsz - 6, 3, 0, 6.2832); c.fill(); }
     }
     c.textAlign = "left";
-    // black keys
+    // black keys: shadow, body, lighter top face that leaves a front edge
     const bl = fx.blackL;
     for (let i = 0; i < bl.length; i++) {
       const m = bl[i], k = keys[m], L = fx.lit[m], fa = g.flash[m] ? Math.max(0, 1 - (now - g.flash[m]) / FLASH_MS) : 0;
       const ma = fx.missT[m] ? Math.max(0, 1 - (now - fx.missT[m]) / MISS_MS) : 0;
       const tp = g.tap[m] ? Math.max(0, 1 - (now - g.tap[m]) / TAP_MS) : 0;
-      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 1.5 : 0;
-      c.fillStyle = "rgba(0,0,0,0.26)"; c.fillRect(k.x + 2, hitY, k.w, bh + 2 - press);
+      const press = (L && !fx.litFade[m]) || fa > 0.5 || tp > 0.35 ? 2 : 0;
+      c.fillStyle = "rgba(0,0,0,0.32)"; rrBottom(c, k.x + 1, hitY, k.w + 2.5, bh + 4 - press, 3.5); c.fill();
       rrBottom(c, k.x, hitY + press, k.w, bh - press, 3.5);
       c.fillStyle = G.black; c.fill();
+      const lit = L || fa > 0 || ma > 0 || fx.wait[m];
+      const ins = Math.max(1, k.w * 0.13), front = Math.max(4, bh * 0.09);
+      if (!lit && k.w >= 9) { rrBottom(c, k.x + ins, hitY + press, k.w - ins * 2, bh - press - front, 2.5); c.fillStyle = G.blackTop; c.fill(); rrBottom(c, k.x, hitY + press, k.w, bh - press, 3.5); }
       if (tp > 0) { c.globalAlpha = 0.3 * tp; c.fillStyle = "#fff"; c.fill(); }
-      if (L) { c.globalAlpha = fx.litFade[m] ? 0.35 : 0.88; c.fillStyle = L.flat; c.fill(); }
+      if (L) { c.globalAlpha = fx.litFade[m] ? 0.35 : 0.92; c.fillStyle = L === HANDS.R ? G.litR : G.litL; c.fill(); }
       if (fa > 0) { c.globalAlpha = fa * 0.9; c.fillStyle = HAND_BY_IDX[fx.hand[m]].flat; c.fill(); }
       if (ma > 0) { c.globalAlpha = ma * 0.9; c.fillStyle = RED; c.fill(); }
       if (fx.wait[m]) { c.globalAlpha = 0.25 + 0.4 * pulse; c.fillStyle = fx.wait[m] === 1 ? HANDS.R.flat : HANDS.L.flat; c.fill(); }
       c.globalAlpha = 1;
-      c.fillStyle = "rgba(255,255,255,0.22)"; c.fillRect(k.x + 1.5, hitY + press, k.w - 3, 1.5);
-      c.fillStyle = "rgba(255,255,255,0.07)"; c.fillRect(k.x + k.w * 0.18, hitY + press + 4, k.w * 0.2, bh * 0.72);
+      c.fillStyle = "rgba(255,255,255,0.2)"; c.fillRect(k.x + ins + 0.5, hitY + press + 3, Math.max(1, k.w * 0.12), (bh - press - front) * 0.8);
     }
+    // red felt strip where the keys meet the stage
+    c.fillStyle = "#7d1626"; c.fillRect(0, hitY, W, 3);
+    c.fillStyle = "rgba(255,255,255,0.14)"; c.fillRect(0, hitY, W, 1);
 
     // sparkles
     if (!reduce) {
@@ -604,14 +672,13 @@
         const s = age / 1000;
         const x = fx.sx[i] + fx.svx[i] * s, y = fx.sy[i] + fx.svy[i] * s + 260 * s * s;
         const life = 1 - age / SPARK_LIFE;
-        c.globalAlpha = life; c.fillStyle = dark ? (fx.sH[i] ? "#b8fff2" : "#d3e0ff") : (fx.sH[i] ? "#0f8a7e" : "#2762e0");
+        c.globalAlpha = life; c.fillStyle = dark ? (fx.sH[i] ? "#ffe6bf" : "#d3e0ff") : (fx.sH[i] ? "#c96a0a" : "#2762e0");
         const z = fx.sz[i] * (0.5 + 0.5 * life);
         c.shadowColor = fx.sH[i] ? HANDS.L.glow : HANDS.R.glow; c.shadowBlur = dark ? 6 : 0;
         c.beginPath(); c.arc(x, y, z, 0, 6.2832); c.fill();
       }
       c.shadowBlur = 0; c.globalAlpha = 1;
     }
-    void dt;
   }
 
   /* ------------------------------------------------------------ small UI bits */
@@ -631,6 +698,7 @@
     note: <g><path d="M9 18V5.5l10-2V16" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></g>,
     sound: <g><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4z" /><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.6 7.6 0 0 1 0 11" /></g>,
     close: <path d="M6 6l12 12M18 6L6 18" />,
+    search: <g><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></g>,
     upload: <path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />,
     mic: <g><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></g>,
   };
@@ -730,8 +798,8 @@
               <h3 id="fn-sec-display">Display</h3>
               <Switch label="Note names" checked={s.labels} onChange={s.setLabels} />
               <div className="fn-row">
-                <span className="fn-row-label">Stage</span>
-                <Seg label="Stage" value={s.stage} onChange={s.setStage} options={[["dark", "Dark"], ["light", "Light"]]} />
+                <span className="fn-row-label">Look</span>
+                <Seg label="Look" value={s.stage} onChange={s.setStage} options={[["dark", "Dark"], ["light", "Light"]]} />
               </div>
             </section>
             <section className="fn-sec" aria-labelledby="fn-sec-mic">
@@ -757,6 +825,7 @@
             </section>
             <section className="fn-sec" aria-labelledby="fn-sec-help">
               <h3 id="fn-sec-help">Help</h3>
+              <Switch label="Play it for me" checked={s.demo} onChange={s.setDemo} hint="The app plays the whole song so you can hear it." />
               <Switch label="Play the other hand for me" checked={s.otherHand} onChange={s.setOtherHand} hint="Headphones help, so the mic does not hear it." />
             </section>
           </div>
@@ -766,7 +835,11 @@
   }
 
   /* ------------------------------------------------------------ player */
-  function FallingPlayer({ meta, onChangeSong }) {
+  const mq = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
+  /* a phone held upright: "full screen" turns the whole app on its side */
+  const ROT_MQ = "(orientation: portrait) and (pointer: coarse) and (max-width: 640px)";
+
+  function FallingPlayer({ meta, onChangeSong, stage, setStage, immersive, toggleImmersive, canImmersive, soundOn, onEnableSound }) {
     const saved = React.useMemo(readSettings, []);
     const gameRef = React.useRef(null);
     if (!gameRef.current || gameRef.current.meta !== meta) gameRef.current = newGame(meta);
@@ -778,7 +851,6 @@
     const [speed, setSpeed] = React.useState(1);
     const [metro, setMetro] = React.useState(!!saved.metro);
     const [labels, setLabels] = React.useState(saved.labels !== false);
-    const [stage, setStage] = React.useState(saved.stage === "light" ? "light" : "dark");
     const [otherHand, setOtherHand] = React.useState(false);
     const [demo, setDemo] = React.useState(false);
     const [loop, setLoop] = React.useState(false);
@@ -788,17 +860,17 @@
     const [micErr, setMicErr] = React.useState("");
     const [listening, setListening] = React.useState(MIC.listening);
     const [drawer, setDrawer] = React.useState(false);
-    const [isFs, setIsFs] = React.useState(false);
-    const [fsOk] = React.useState(FS_OK);
     const [snap, setSnap] = React.useState({});
     const [size, setSize] = React.useState({ w: 360, h: 420 });
-    const playerRef = React.useRef(null), wrapRef = React.useRef(null), canvasRef = React.useRef(null), bodyRef = React.useRef(null), gearRef = React.useRef(null);
+    const wrapRef = React.useRef(null), canvasRef = React.useRef(null), bodyRef = React.useRef(null), gearRef = React.useRef(null);
     const detRef = React.useRef(null);
     if (!detRef.current) detRef.current = new FC.Detector(SENS_KEYS[sens]);
     const live = React.useRef({}); // mic readouts updated by the loop
     const stageRef = React.useRef(stage); stageRef.current = stage;
     const prevBest = React.useRef(0);
     const drawerRef = React.useRef(false); drawerRef.current = drawer;
+    const immRef = React.useRef(immersive); immRef.current = immersive;
+    const coarse = React.useMemo(() => mq("(pointer: coarse)"), []);
 
     // push options into the engine; changing hands / wait starts the song over
     React.useEffect(() => {
@@ -809,8 +881,8 @@
     }, [hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd]);
     React.useEffect(() => {
       detRef.current.setSens(SENS_KEYS[sens]);
-      if (window.Students) window.Students.writeNS("fallingNotes.settings", { sens, wait, metro, labels, stage });
-    }, [sens, wait, metro, labels, stage]);
+      saveSettings({ sens, wait, metro, labels });
+    }, [sens, wait, metro, labels]);
 
     const hooks = React.useMemo(() => ({
       click: (acc) => { window.MusicAudio && window.MusicAudio.click(acc); },
@@ -831,6 +903,12 @@
       }
     }
     function stopListening() { MIC.stop(); setListening(false); live.current = {}; detRef.current.reset(); }
+    // the microphone note goes away by itself
+    React.useEffect(() => {
+      if (!micErr) return;
+      const t = setTimeout(() => setMicErr(""), 9000);
+      return () => clearTimeout(t);
+    }, [micErr]);
 
     /* start the song. d = true: the app plays it. d = false: the student plays
        (on a real piano through the mic, or by tapping the keys on screen). */
@@ -843,7 +921,6 @@
       detRef.current.reset();
       prevBest.current = bestPct(g.key, hands, wait);
       play(g);
-      showStage();
     }
     function togglePlay() {
       if (g.playing) { pause(g); return; }
@@ -858,39 +935,30 @@
       g.ignoreUntil = now + 400; // the mic must not count this sound a second time
       if (!g.opts.demo) onHeard(g, midi, now, 0);
     }
-    function onStageDown(e) {
-      const cv = canvasRef.current; if (!cv || (e.button != null && e.button > 0)) return;
+    /* pointer -> canvas coordinates, also when the app is turned on its side */
+    function stagePoint(e) {
+      const cv = canvasRef.current; if (!cv) return null;
       const r = cv.getBoundingClientRect();
-      const m = keyAt(g.geo, e.clientX - r.left, e.clientY - r.top);
+      if (immRef.current && mq(ROT_MQ)) return [e.clientY - r.top, r.right - e.clientX];
+      return [e.clientX - r.left, e.clientY - r.top];
+    }
+    function onStageDown(e) {
+      if (e.button != null && e.button > 0) return;
+      const p = stagePoint(e); if (!p) return;
+      const m = keyAt(g.geo, p[0], p[1]);
       if (m == null) return;
       e.preventDefault();
       tapKey(m);
     }
     function onStageMove(e) {
       const cv = canvasRef.current; if (!cv || e.pointerType === "touch") return;
-      const r = cv.getBoundingClientRect();
-      const over = keyAt(g.geo, e.clientX - r.left, e.clientY - r.top) != null;
+      const p = stagePoint(e);
+      const over = !!p && keyAt(g.geo, p[0], p[1]) != null;
       if (cv.dataset.keys !== String(over)) cv.dataset.keys = String(over);
-    }
-    /* keep the falling notes and the keyboard on screen while playing */
-    function showStage() {
-      const el = wrapRef.current; if (!el || fsElement()) return;
-      const r = el.getBoundingClientRect();
-      if (r.bottom > window.innerHeight || r.top < 0) {
-        const smooth = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-        el.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
-      }
     }
     function restart() { resetAll(g); detRef.current.reset(); }
     function restartAndPlay() { begin(false, true); }
     const toggleRef = React.useRef(); toggleRef.current = togglePlay;
-
-    function toggleFs() {
-      const el = playerRef.current; if (!el) return;
-      if (fsElement()) { const x = document.exitFullscreen || document.webkitExitFullscreen; if (x) { const p = x.call(document); if (p && p.catch) p.catch(() => {}); } return; }
-      const f = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (f) { const p = f.call(el); if (p && p.catch) p.catch(() => {}); }
-    }
 
     // keyboard: space plays / pauses
     React.useEffect(() => {
@@ -905,43 +973,31 @@
       return () => window.removeEventListener("keydown", onKey);
     }, []);
 
-    // while the settings drawer is open the rest of the page is inert
+    // while the settings drawer is open the rest of the app is inert
     React.useEffect(() => {
       const el = bodyRef.current; if (!el) return;
       if (drawer) { el.setAttribute("inert", ""); el.setAttribute("aria-hidden", "true"); }
       else { el.removeAttribute("inert"); el.removeAttribute("aria-hidden"); }
     }, [drawer]);
 
-    // size
+    // the stage fills whatever space the app has
     React.useEffect(() => {
       const el = wrapRef.current; if (!el) return;
       const measure = () => {
-        const w = Math.max(280, Math.floor(el.clientWidth));
-        let h;
-        const fs = fsElement() === playerRef.current;
-        if (fs) h = Math.max(260, Math.floor(window.innerHeight - el.getBoundingClientRect().top - 12));
-        else h = Math.round(Math.max(300, Math.min(560, window.innerHeight - (window.innerWidth < 640 ? 300 : 190))));
+        const w = Math.max(240, Math.floor(el.clientWidth)), h = Math.max(200, Math.floor(el.clientHeight));
         setSize((s) => (s.w === w && s.h === h ? s : { w, h }));
       };
-      const onFs = () => { setIsFs(fsElement() === playerRef.current); measure(); requestAnimationFrame(measure); };
       measure();
       let ro = null;
       if (window.ResizeObserver) { ro = new ResizeObserver(measure); ro.observe(el); }
       window.addEventListener("resize", measure);
-      document.addEventListener("fullscreenchange", onFs);
-      document.addEventListener("webkitfullscreenchange", onFs);
-      return () => {
-        if (ro) ro.disconnect(); window.removeEventListener("resize", measure);
-        document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs);
-      };
+      return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", measure); };
     }, []);
 
     // main loop
     React.useEffect(() => {
-      const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const reduce = mq("(prefers-reduced-motion: reduce)");
       let colors = stageColors(stageRef.current);
-      const mo = new MutationObserver(() => { colors = stageColors(stageRef.current); });
-      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
       const fx = createFx();
       let raf = 0, last = performance.now(), lastUi = 0, lastYin = 0;
       const lv = live.current;
@@ -952,7 +1008,7 @@
         // 1) listen
         if (MIC.listening) {
           const cand = candidates(g);
-          const needHi = cand.some((m) => m < 60);
+          const needHi = cand.some((m) => m < FC.HI_BELOW);
           const spec = MIC.read(needHi);
           const rms = FC.rms(MIC.time);
           lv.level = Math.max(0, Math.min(1, (20 * Math.log10(rms + 1e-9) + 60) / 50));
@@ -975,11 +1031,11 @@
         if (g.finished && g.result && g.result.newBest === undefined) g.result.newBest = g.key !== "custom" && g.result.pct > 0 && g.result.pct > prevBest.current;
         // 3) draw
         if (cv) {
-          const { w, h } = sizeRef.current, dpr = window.devicePixelRatio || 1;
+          const { w, h } = sizeRef.current, dpr = Math.min(2.5, window.devicePixelRatio || 1);
           if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
           const c = cv.getContext("2d");
           c.setTransform(dpr, 0, 0, dpr, 0, 0);
-          if (!g.geo || g.geo.W !== w || g.geo.H !== h) g.geo = makeGeo(g, w, h);
+          if (!g.geo || g.geo.W !== w || g.geo.H !== h) g.geo = makeGeo(g, w, h, coarse);
           if (colors.stage !== stageRef.current) colors = stageColors(stageRef.current);
           draw(c, g, g.geo, colors, fx, now, reduce, dpr);
         }
@@ -999,7 +1055,7 @@
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
-      return () => { cancelAnimationFrame(raf); mo.disconnect(); };
+      return () => { cancelAnimationFrame(raf); };
     }, []);
     const sizeRef = React.useRef(size); sizeRef.current = size;
 
@@ -1012,9 +1068,16 @@
             playing: g.playing, beat: g.beat, waiting: g.waiting, expected: expectedNow(g),
             hits: cn.hits, misses: cn.misses, score: cn.hits + cn.misses ? Math.round(100 * cn.hits / (cn.hits + cn.misses)) : null,
             finished: g.finished, listening: MIC.listening, song: g.key,
+            keys: g.geo ? { whites: g.geo.whites.length, keyW: g.geo.kw, keyH: g.geo.kbH, from: g.geo.a, to: g.geo.b } : null,
           };
         },
         injectNotes(midis) { const now = performance.now(); return (midis || []).map((m) => onHeard(g, m, now, 0)); },
+        /* where a key is on the page (centre of its lower half), for tap tests */
+        keyPoint(midi) {
+          const cv = canvasRef.current, k = g.geo && g.geo.keys[midi]; if (!cv || !k) return null;
+          const r = cv.getBoundingClientRect(), x = k.x + k.w / 2, y = g.geo.H - g.geo.kbH + (k.black ? g.geo.blackH * 0.5 : g.geo.kbH * 0.85);
+          return immRef.current && mq(ROT_MQ) ? [r.right - y, r.top + x] : [r.left + x, r.top + y];
+        },
         /* test-synth only: play `midis` and return detector scores over ~0.7 s */
         probe(midis, sens) {
           if (!MIC.listening) return Promise.resolve(null);
@@ -1024,7 +1087,7 @@
             const iv = setInterval(() => {
               const s = MIC.read(true);
               log.push(midis.map((m) => {
-                const sp = m < 60 ? s.hi : s.lo;
+                const sp = m < FC.HI_BELOW ? s.hi : s.lo;
                 const r = FC.scoreNotes(sp.mag, sp.sr, sp.fftSize, midis, sens || "medium").find((x) => x.midi === m);
                 return [m, +r.score.toFixed(2), +r.strength.toExponential(1)];
               }));
@@ -1037,10 +1100,10 @@
     }, [g]);
     React.useEffect(() => () => { pause(g); }, [g]);
 
-    // when the result card appears, put keyboard focus on "Play again"
+    // when a result card appears, put keyboard focus on its first button
     const resultRef = React.useRef(null);
     React.useEffect(() => {
-      if (snap.finished && snap.result && resultRef.current) { const b = resultRef.current.querySelector("button"); if (b) b.focus({ preventScroll: true }); }
+      if (snap.finished && resultRef.current) { const b = resultRef.current.querySelector("button"); if (b) b.focus({ preventScroll: true }); }
     }, [snap.finished && (snap.result || demo)]);
 
     // clamp loop bars
@@ -1064,21 +1127,22 @@
     const sub = (meta.level || "Medium") + " · " + g.bpb + "/4 · " + g.bpm + " bpm";
     const atStart = !snap.playing && !snap.finished && !(g.beat > homeBeat(g) + 0.01);
     const lvl = Math.round((snap.level || 0) * 100);
+    const res = snap.result;
 
     return (
-      <div className={"fn-player" + (isFs ? " is-fs" : "")} data-stage={stage} ref={playerRef}>
+      <div className="fn-player">
         <div className="fn-body" ref={bodyRef}>
-          <div className="fn-toolbar" role="toolbar" aria-label="Song controls">
-            <div className="fn-tb-id">
-              <button type="button" className="fn-back" onClick={onChangeSong}><Icon n="back" size={18} /> Songs</button>
+          <header className="fn-bar" role="toolbar" aria-label="Song controls">
+            <div className="fn-bar-id">
+              <button type="button" className="fn-back" onClick={onChangeSong}><Icon n="back" size={18} /> <span>Songs</span></button>
               <div className="fn-title">
                 <h2>{g.name}</h2>
                 <span>{sub}</span>
               </div>
             </div>
-            <div className="fn-tb-main">
+            <div className="fn-bar-main">
               <button type="button" className="fn-play" onClick={togglePlay} aria-label={snap.playing ? "Pause" : "Play"} title={(snap.playing ? "Pause" : "Play") + " (space bar)"}>
-                <Icon n={snap.playing ? "pause" : "play"} size={24} />
+                <Icon n={snap.playing ? "pause" : "play"} size={22} />
               </button>
               <button type="button" className="fn-icon-btn" onClick={restart} aria-label="Restart" title="Restart"><Icon n="restart" /></button>
               <div className="fn-stepper" role="group" aria-label="Speed">
@@ -1086,57 +1150,77 @@
                 <output aria-live="off">{Math.round(speed * 100)}%</output>
                 <button type="button" aria-label="Faster" onClick={() => setSpeedClamped(speed + 0.1)} disabled={speed >= 1.5}><Icon n="plus" size={16} /></button>
               </div>
-              <Seg label="Hands" value={hands} onChange={setHands} options={[["R", "Right"], ["L", "Left"], ["B", "Both"]]} />
-              {demo ? null : <Chip label="Wait for me" checked={wait} onChange={setWait} />}
-              <Chip label="Metronome" checked={metro} onChange={setMetro} />
-              <Chip label="Play it for me" checked={demo} onChange={setDemo} />
+              <Seg label="Hands" value={hands} onChange={setHands} options={[
+                ["L", <React.Fragment><i className="fn-dot l" aria-hidden="true" />Left</React.Fragment>],
+                ["R", <React.Fragment><i className="fn-dot r" aria-hidden="true" />Right</React.Fragment>],
+                ["B", "Both"]]} />
+              <span className="fn-bar-chips">
+                {demo ? null : <Chip label="Wait for me" checked={wait} onChange={setWait} />}
+                <Chip label="Metronome" checked={metro} onChange={setMetro} />
+                <Chip label="Play it for me" checked={demo} onChange={setDemo} />
+              </span>
             </div>
-            <div className="fn-tb-end">
+            <div className="fn-bar-end">
               <button type="button" className="fn-icon-btn" onClick={() => setStage(stage === "dark" ? "light" : "dark")}
-                aria-label={stage === "dark" ? "Switch to light stage" : "Switch to dark stage"} title={stage === "dark" ? "Light stage" : "Dark stage"}>
+                aria-label={stage === "dark" ? "Switch to light look" : "Switch to dark look"} title={stage === "dark" ? "Light look" : "Dark look"}>
                 <Icon n={stage === "dark" ? "sun" : "moon"} />
               </button>
-              {fsOk ? (
-                <button type="button" className="fn-icon-btn" onClick={toggleFs} aria-label={isFs ? "Exit full screen" : "Full screen"} title={isFs ? "Exit full screen" : "Full screen"}>
-                  <Icon n={isFs ? "compress" : "expand"} />
+              {canImmersive ? (
+                <button type="button" className="fn-icon-btn" onClick={toggleImmersive} aria-label={immersive ? "Exit full screen" : "Full screen"} title={immersive ? "Exit full screen" : "Full screen"}>
+                  <Icon n={immersive ? "compress" : "expand"} />
                 </button>
               ) : null}
               <button type="button" className="fn-icon-btn" ref={gearRef} onClick={() => setDrawer(true)} aria-label="Settings" aria-haspopup="dialog" title="Settings"><Icon n="gear" /></button>
             </div>
-          </div>
+          </header>
 
-          <div className="fn-progress">
-            <span className="fn-barlbl">Bar {Math.min(snap.bar || 1, totalBars)}<small>/{totalBars}</small></span>
-            <div className="fn-timeline" role="progressbar" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(pos * 100)} style={{ "--bars": totalBars }}>
-              {totalBars <= 120 ? <div className="fn-ticks" /> : null}
-              {loop ? <div className="fn-loopzone" style={{ left: ((Math.max(1, loopStart) - 1) / totalBars) * 100 + "%", width: ((Math.max(loopStart, loopEnd) - Math.max(1, loopStart) + 1) / totalBars) * 100 + "%" }} /> : null}
-              <div className="fn-fill" style={{ width: pos * 100 + "%" }} />
-              <div className="fn-head" style={{ left: pos * 100 + "%" }} />
-            </div>
-            <div className="fn-prog-end">
-              {demo ? null : (
-                <span className="fn-score" aria-label="Notes right so far">
-                  <strong>{snap.hits || 0}</strong><span> / {snap.total || 0}</span>
-                  {acc != null ? <em>{acc}%</em> : null}
-                </span>
-              )}
-              {demo ? (
-                <span className="fn-mic demo"><Icon n="note" size={15} /> Playing it for you</span>
-              ) : listening ? (
-                <span className="fn-mic on" style={{ "--lvl": lvl / 100 }}><i aria-hidden="true" /> Listening</span>
-              ) : (
-                <button type="button" className="fn-mic" onClick={startListening}><i aria-hidden="true" /> Start listening</button>
-              )}
-              {listening && !snap.playing && snap.heard ? <span className="fn-heard" key={snap.heardAt} aria-live="polite">Heard {snap.heard}</span> : null}
-            </div>
+          <div className="fn-timeline" role="progressbar" aria-label="Song progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(pos * 100)} style={{ "--bars": totalBars }}>
+            {totalBars <= 80 ? <div className="fn-ticks" /> : null}
+            {loop ? <div className="fn-loopzone" style={{ left: ((Math.max(1, loopStart) - 1) / totalBars) * 100 + "%", width: ((Math.max(loopStart, loopEnd) - Math.max(1, loopStart) + 1) / totalBars) * 100 + "%" }} /> : null}
+            <div className="fn-fill" style={{ width: pos * 100 + "%" }} />
           </div>
-          {micErr && !demo ? <p className="fn-micnote" role="status"><Icon n="mic" size={16} /> <span>{micErr}</span></p> : null}
           <div className="sr-only" aria-live="polite">{status}{snap.lastPass != null ? " Last loop: " + snap.lastPass + "%" : ""}</div>
 
           <div className="fn-stage" ref={wrapRef}>
             <canvas ref={canvasRef} role="img" tabIndex={0} onPointerDown={onStageDown} onPointerMove={onStageMove}
               aria-label={"Falling notes for " + g.name + ". " + status}
               style={{ width: size.w + "px", height: size.h + "px" }} />
+            <div className="fn-hud">
+              <span className="fn-hud-start">
+                <span className="fn-pill fn-barlbl">Bar {Math.min(snap.bar || 1, totalBars)}<small>/{totalBars}</small></span>
+                <span className="fn-pill fn-legend" aria-label="Colours: orange is the left hand, blue is the right hand">
+                  <i className="fn-dot l" aria-hidden="true" /><span>Left</span><i className="fn-dot r" aria-hidden="true" /><span>Right</span>
+                </span>
+              </span>
+              <span className="fn-hud-end">
+                {listening && !demo && !snap.playing && snap.heard ? <span className="fn-heard" key={snap.heardAt} aria-live="polite">Heard {snap.heard}</span> : null}
+                {demo ? (
+                  <span className="fn-pill fn-mic demo"><Icon n="note" size={15} /> Playing it for you</span>
+                ) : (
+                  <React.Fragment>
+                    <span className="fn-pill fn-score" aria-label="Notes right so far">
+                      <strong>{snap.hits || 0}</strong><span> / {snap.total || 0}</span>
+                      {acc != null ? <em>{acc}%</em> : null}
+                    </span>
+                    {listening ? (
+                      <span className="fn-pill fn-mic on" style={{ "--lvl": lvl / 100 }}><i aria-hidden="true" /> Listening</span>
+                    ) : (
+                      <button type="button" className="fn-pill fn-mic" onClick={startListening}><Icon n="mic" size={15} /> <span>Use the mic</span></button>
+                    )}
+                  </React.Fragment>
+                )}
+              </span>
+            </div>
+            <div className="fn-toasts">
+              {!soundOn ? (
+                <p className="fn-toast" role="status"><Icon n="sound" size={16} /> <span>Sound is turned off for this site.</span>
+                  <button type="button" onClick={onEnableSound}>Turn sound on</button></p>
+              ) : null}
+              {micErr && !demo ? (
+                <p className="fn-toast" role="status"><Icon n="mic" size={16} /> <span>{micErr}</span>
+                  <button type="button" aria-label="Close this note" onClick={() => setMicErr("")}><Icon n="close" size={14} /></button></p>
+              ) : null}
+            </div>
             {snap.waiting && expectedText ? (
               <div className="fn-floatwrap">
                 <span className="fn-waitchip"><i aria-hidden="true" /> Play: {expectedText}</span>
@@ -1152,30 +1236,36 @@
                 <button type="button" className="fn-start ghost" onClick={() => begin(true)}><Icon n="sound" size={18} /> Hear it first</button>
               </div>
             ) : null}
-            {snap.finished && !snap.result && demo ? (
+            {snap.finished && !res && demo ? (
               <div className="fn-result" role="dialog" aria-label="The song has finished" ref={resultRef}>
                 <div className="fn-result-card fn-turn">
                   <span className="fn-turn-icon" aria-hidden="true"><Icon n="note" size={30} /></span>
                   <h3>Your turn!</h3>
                   <p>Now try it yourself. Slow it down if you need to.</p>
                   <div className="fn-result-actions">
-                    <button type="button" className="btn btn-primary" onClick={() => begin(false, true)}>Now you play</button>
-                    <button type="button" className="btn btn-ghost" onClick={() => begin(true, true)}>Hear it again</button>
+                    <button type="button" className="fn-cta" onClick={() => begin(false, true)}>Now you play</button>
+                    <button type="button" className="fn-cta ghost" onClick={() => begin(true, true)}>Hear it again</button>
                   </div>
                 </div>
               </div>
             ) : null}
-            {snap.finished && snap.result ? (
+            {snap.finished && res ? (
               <div className="fn-result" role="dialog" aria-label="Your result" ref={resultRef}>
                 <div className="fn-result-card">
-                  <Stars n={snap.result.stars} pop />
-                  <h3>{snap.result.stars === 3 ? "Brilliant!" : snap.result.stars === 2 ? "Great job!" : snap.result.stars === 1 ? "Nice work!" : "Keep practising!"}</h3>
-                  <div className="fn-pct">{snap.result.pct}<small>%</small></div>
-                  <p>{snap.result.hits} of {snap.result.total} notes</p>
-                  {snap.result.newBest ? <span className="fn-newbest">New best!</span> : null}
+                  <Stars n={res.stars} pop />
+                  <h3>{res.stars === 3 ? "Brilliant!" : res.stars === 2 ? "Great job!" : res.stars === 1 ? "Nice work!" : "Keep practising!"}</h3>
+                  <div className="fn-ring" style={{ "--pct": res.pct }} role="img" aria-label={res.pct + " percent"}>
+                    <div className="fn-pct">{res.pct}<small>%</small></div>
+                  </div>
+                  <dl className="fn-stats">
+                    <div><dt>Right</dt><dd>{res.hits}</dd></div>
+                    <div><dt>Missed</dt><dd>{res.total - res.hits}</dd></div>
+                    <div><dt>Speed</dt><dd>{Math.round(speed * 100)}%</dd></div>
+                  </dl>
+                  {res.newBest ? <span className="fn-newbest">New best!</span> : null}
                   <div className="fn-result-actions">
-                    <button type="button" className="btn btn-primary" onClick={restartAndPlay}>Play again</button>
-                    <button type="button" className="btn btn-ghost" onClick={onChangeSong}>Pick another song</button>
+                    <button type="button" className="fn-cta" onClick={restartAndPlay}>Play again</button>
+                    <button type="button" className="fn-cta ghost" onClick={onChangeSong}>Pick another song</button>
                   </div>
                 </div>
               </div>
@@ -1187,7 +1277,7 @@
           <SettingsDrawer onClose={() => setDrawer(false)} s={{
             wait, setWait, metro, setMetro, loop, setLoop, loopStart, loopEnd, setBar, totalBars,
             labels, setLabels, stage, setStage, sens, setSens, listening, level: snap.level || 0, micOk: !!snap.micOk,
-            startListening, stopListening, otherHand, setOtherHand,
+            startListening, stopListening, otherHand, setOtherHand, demo, setDemo,
           }} />
         ) : null}
       </div>
@@ -1214,7 +1304,7 @@
     const t = thumbPaths(meta);
     return (
       <svg className="fn-thumb" viewBox={"0 0 " + t.W + " " + t.H} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-        <path d={t.L} fill="#34e0c4" opacity="0.92" />
+        <path d={t.L} fill="#ffa63d" opacity="0.95" />
         <path d={t.R} fill="#6f9bff" opacity="0.95" />
       </svg>
     );
@@ -1227,18 +1317,76 @@
     return raw;
   }
 
-  /* ------------------------------------------------------------ page */
-  function FallingNotes({ year, onBack }) {
+  /* ------------------------------------------------------------ app shell: song library + player */
+  const Logo = ({ size = 34 }) => (
+    <svg className="fn-logo" width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+      <rect width="40" height="40" rx="11" fill="#0d1226" />
+      <rect x="7" y="6" width="5" height="12" rx="2.5" fill="#ffa63d" />
+      <rect x="17.5" y="10" width="5" height="9" rx="2.5" fill="#5b8cff" />
+      <rect x="28" y="4" width="5" height="16" rx="2.5" fill="#5b8cff" />
+      <rect x="5" y="24" width="30" height="11" rx="2.5" fill="#fff" />
+      <path d="M12.5 24v11M20 24v11M27.5 24v11" stroke="#c9cad6" strokeWidth="1" />
+      <rect x="10.4" y="24" width="4.2" height="6.4" rx="1" fill="#11131c" />
+      <rect x="25.4" y="24" width="4.2" height="6.4" rx="1" fill="#11131c" />
+    </svg>
+  );
+
+  function FallingNotes({ year, onBack, soundOn, onEnableSound }) {
     const [meta, setMeta] = React.useState(null);
     const [msg, setMsg] = React.useState("");
     const [filter, setFilter] = React.useState("All");
+    const [query, setQuery] = React.useState("");
+    const [stage, setStageState] = React.useState(() => (readSettings().stage === "light" ? "light" : "dark"));
+    const [immersive, setImmersive] = React.useState(false);
     const [, bump] = React.useState(0);
-    const fileRef = React.useRef(null);
+    const fileRef = React.useRef(null), appRef = React.useRef(null);
     const songs = React.useMemo(songList, []);
+    const canFs = React.useMemo(FS_OK, []);
+    const phone = React.useMemo(() => mq("(pointer: coarse)"), []);
+    const setStage = (v) => { setStageState(v); saveSettings({ stage: v }); };
 
-    React.useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [meta]);
     React.useEffect(() => () => { MIC.stop(); }, []);
+    // the app owns the whole window: no page scrolling behind it
+    React.useEffect(() => {
+      const el = document.documentElement;
+      el.classList.add("fn-app-open");
+      return () => { el.classList.remove("fn-app-open"); };
+    }, []);
+    // leaving real full screen (Esc, system gesture) also leaves the app's full-screen look
+    React.useEffect(() => {
+      if (!canFs) return;
+      const onFs = () => { if (!fsElement()) setImmersive(false); };
+      document.addEventListener("fullscreenchange", onFs);
+      document.addEventListener("webkitfullscreenchange", onFs);
+      return () => { document.removeEventListener("fullscreenchange", onFs); document.removeEventListener("webkitfullscreenchange", onFs); };
+    }, []);
 
+    /* Full screen. Where the browser allows it the app goes truly full screen and
+       asks to lock to landscape. A phone that cannot do either (iPhone) gets the
+       same result by turning the app on its side: see .fn-app.immersive in the CSS. */
+    function toggleImmersive() {
+      const el = appRef.current; if (!el) return;
+      const unlock = () => { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* ignore */ } };
+      if (immersive) {
+        setImmersive(false); unlock();
+        if (fsElement()) { const x = document.exitFullscreen || document.webkitExitFullscreen; if (x) { const p = x.call(document); if (p && p.catch) p.catch(() => {}); } }
+        return;
+      }
+      setImmersive(true);
+      const lock = () => { try { const p = screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape"); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } };
+      const f = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!f || !canFs) return;
+      try {
+        const p = f.call(el);
+        if (p && p.then) p.then(lock).catch(() => { if (!phone) setImmersive(false); });
+        else lock();
+      } catch (e) { if (!phone) setImmersive(false); }
+    }
+
+    function openSong(s) {
+      if (s.key !== "custom" && window.Students) window.Students.writeNS("fallingNotes.last", s.key);
+      setMeta(s);
+    }
     function openFile(file) {
       setMsg("");
       if (!file) return;
@@ -1247,7 +1395,7 @@
         try {
           const m = FC.parseMidi(buf);
           const cut = m.events.length > 4000;
-          setMeta({
+          openSong({
             key: "custom", name: file.name.replace(/\.midi?$/i, ""), tag: "YOUR FILE", level: "Your file",
             model: cut ? { ...m, events: m.events.slice(0, 4000) } : m,
           });
@@ -1262,66 +1410,110 @@
 
     const LEVELS = ["Easy", "Medium", "Hard"];
     const count = (l) => songs.filter((s) => s.level === l).length;
-    const shown = songs.filter((s) => filter === "All" || s.level === filter)
+    const q = query.trim().toLowerCase();
+    const shown = songs
+      .filter((s) => (filter === "All" || s.level === filter) && (!q || (s.name + " " + byline(s)).toLowerCase().indexOf(q) >= 0))
       .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
+    const starTotal = songs.reduce((t, s) => t + bestStars(s.key), 0);
+    const lastKey = window.Students ? window.Students.readNS("fallingNotes.last", null) : null;
+    const last = lastKey ? songs.find((s) => s.key === lastKey) : null;
+    const fsBtn = (canFs || phone) ? (
+      <button type="button" className="fn-icon-btn" onClick={toggleImmersive} aria-label={immersive ? "Exit full screen" : "Full screen"} title={immersive ? "Exit full screen" : "Full screen"}>
+        <Icon n={immersive ? "compress" : "expand"} />
+      </button>
+    ) : null;
 
     return (
-      <div className="instrument-studio fn-page">
-        <div className="studio-backbar">
-          <button className="btn btn-ghost" onClick={onBack}>
-            <span aria-hidden="true">←</span> Back to {window.CURRICULUM[year].label}
-          </button>
-        </div>
-
+      <div className={"fn-app" + (immersive ? " immersive" : "")} data-stage={stage} ref={appRef}>
         {meta ? (
-          <FallingPlayer key={meta.key + meta.name} meta={meta} onChangeSong={() => { setMeta(null); bump((n) => n + 1); }} />
+          <FallingPlayer key={meta.key + meta.name} meta={meta} onChangeSong={() => { setMeta(null); bump((n) => n + 1); }}
+            stage={stage} setStage={setStage} immersive={immersive} toggleImmersive={toggleImmersive} canImmersive={canFs || phone}
+            soundOn={soundOn !== false} onEnableSound={onEnableSound} />
         ) : (
-          <div className="fn-list">
-            <header className="fn-listhead">
-              <h1>Falling Notes</h1>
-              <p>Pick a song. Play along on a real piano while the mic listens, or tap the keys on the screen. You can hear any song first.</p>
+          <div className="fn-lib">
+            <header className="fn-bar fn-lib-bar">
+              <div className="fn-bar-id">
+                <button type="button" className="fn-back" onClick={onBack}><Icon n="back" size={18} /> <span>{window.CURRICULUM[year].label}</span></button>
+                <div className="fn-brand"><Logo /><h1>Falling Notes</h1></div>
+              </div>
+              <div className="fn-bar-end">
+                <span className="fn-pill fn-startotal" title="Stars you have earned"><Star /> {starTotal}<small>/{songs.length * 3}</small></span>
+                <button type="button" className="fn-icon-btn" onClick={() => setStage(stage === "dark" ? "light" : "dark")}
+                  aria-label={stage === "dark" ? "Switch to light look" : "Switch to dark look"} title={stage === "dark" ? "Light look" : "Dark look"}>
+                  <Icon n={stage === "dark" ? "sun" : "moon"} />
+                </button>
+                {fsBtn}
+              </div>
             </header>
 
-            <div className="fn-listbar">
-              <div className="fn-filters" role="group" aria-label="Filter songs by level">
-                {["All"].concat(LEVELS).map((l) => (
-                  <button key={l} type="button" aria-pressed={filter === l} onClick={() => setFilter(l)}>
-                    {l} <span>{l === "All" ? songs.length : count(l)}</span>
+            <div className="fn-lib-scroll">
+              <section className="fn-hero">
+                <div className="fn-hero-text">
+                  <h2>What will you play today?</h2>
+                  <p>Pick a song and play along on a real piano while the mic listens, or tap the keys on the screen. You can hear any song first.</p>
+                </div>
+                {last ? (
+                  <button type="button" className="fn-resume" onClick={() => openSong(last)}>
+                    <Thumb meta={last} />
+                    <span className="fn-resume-text"><small>Keep going</small><strong>{last.name}</strong></span>
+                    <span className="fn-resume-go" aria-hidden="true"><Icon n="play" size={18} /></span>
                   </button>
-                ))}
-              </div>
-              <div className="fn-open">
-                <button type="button" className="fn-textbtn" onClick={() => fileRef.current && fileRef.current.click()}>
-                  <Icon n="upload" size={16} /> Open your own MIDI file
-                </button>
-                <input ref={fileRef} type="file" accept=".mid,.midi,audio/midi" className="sr-only" aria-label="Open a MIDI file" tabIndex={-1}
-                  onChange={(e) => { openFile(e.target.files && e.target.files[0]); e.target.value = ""; }} />
-              </div>
-            </div>
-            {msg ? <p className="fn-error" role="alert">{msg}</p> : null}
+                ) : null}
+              </section>
 
-            <ul className="fn-songs">
-              {shown.map((s) => {
-                const stars = bestStars(s.key), t = thumbPaths(s);
-                return (
-                  <li key={s.key}>
-                    <button type="button" className="fn-card" onClick={() => setMeta(s)}>
-                      <Thumb meta={s} />
-                      <span className="fn-card-body">
-                        <span className="fn-card-name">{s.name}</span>
-                        <span className="fn-card-by">{byline(s)}</span>
-                        <span className="fn-card-meta">
-                          <span className={"chip " + (s.level === "Easy" ? "solid-teal" : s.level === "Medium" ? "solid-butter" : "solid-terracotta")}>{s.level}</span>
-                          <span className="chip">{t.bpb}/4</span>
-                          <span className="chip" title="How long the song is">{fmtTime(t.secs)}</span>
-                          {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
-                        </span>
-                      </span>
+              <div className="fn-listbar">
+                <label className="fn-search">
+                  <Icon n="search" size={18} />
+                  <span className="sr-only">Search songs</span>
+                  <input type="search" placeholder="Search songs" value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
+                <div className="fn-filters" role="group" aria-label="Filter songs by level">
+                  {["All"].concat(LEVELS).map((l) => (
+                    <button key={l} type="button" aria-pressed={filter === l} onClick={() => setFilter(l)}>
+                      {l} <span>{l === "All" ? songs.length : count(l)}</span>
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  ))}
+                </div>
+                <div className="fn-open">
+                  <button type="button" className="fn-textbtn" onClick={() => fileRef.current && fileRef.current.click()}>
+                    <Icon n="upload" size={16} /> Open your own MIDI file
+                  </button>
+                  <input ref={fileRef} type="file" accept=".mid,.midi,audio/midi" className="sr-only" aria-label="Open a MIDI file" tabIndex={-1}
+                    onChange={(e) => { openFile(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                </div>
+              </div>
+              {msg ? <p className="fn-error" role="alert">{msg}</p> : null}
+
+              {shown.length ? (
+                <ul className="fn-songs">
+                  {shown.map((s) => {
+                    const stars = bestStars(s.key), t = thumbPaths(s);
+                    return (
+                      <li key={s.key}>
+                        <button type="button" className="fn-card" onClick={() => openSong(s)}>
+                          <span className="fn-card-art">
+                            <Thumb meta={s} />
+                            <span className="fn-card-play" aria-hidden="true"><Icon n="play" size={20} /></span>
+                            <span className="fn-card-time">{fmtTime(t.secs)}</span>
+                          </span>
+                          <span className="fn-card-body">
+                            <span className="fn-card-name">{s.name}</span>
+                            <span className="fn-card-by">{byline(s)}</span>
+                            <span className="fn-card-meta">
+                              <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
+                              <span className="fn-sig">{t.bpb}/4</span>
+                              {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="fn-empty">No songs match. Try a different word or level.</p>
+              )}
+            </div>
           </div>
         )}
       </div>
