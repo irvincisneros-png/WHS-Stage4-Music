@@ -1224,6 +1224,7 @@
 
   /* ------------------------------------------------------------ small UI bits */
   const ICONS = {
+    tempo: <g><path d="M9.2 3h5.6l4.2 18H5z" /><path d="M12 16l5.5-9.5" /><path d="M7.2 16h9.6" /></g>,
     play: <path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z" fill="currentColor" stroke="none" />,
     pause: <g fill="currentColor" stroke="none"><rect x="6" y="4.5" width="4.2" height="15" rx="1.4" /><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.4" /></g>,
     restart: <g><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" /><path d="M3.5 4.5v4.8h4.8" /></g>,
@@ -1288,6 +1289,74 @@
           <button key={v} type="button" aria-pressed={value === v} onClick={() => onChange(v)}>{l}</button>
         ))}
       </div>
+    );
+  }
+
+  /* ------------------------------------------------------------ tempo */
+  const SPEED_MIN = 0.25, SPEED_MAX = 1.5;
+  const TEMPO_PRESETS = [[0.5, "Half speed"], [0.75, "¾ speed"], [1, "Normal"]];
+  /* A pill in the bar shows the tempo; tapping it opens a slider underneath.
+     The song's own tempo changes still happen, just scaled by this. */
+  function TempoControl({ speed, bpm, onChange }) {
+    const [open, setOpen] = React.useState(false);
+    const [left, setLeft] = React.useState(0);
+    const btn = React.useRef(null), pop = React.useRef(null);
+    const now = Math.round(bpm * speed);
+    const pct = Math.round(speed * 100);
+    // place the panel under the pill, in layout coordinates (the app may be CSS-rotated)
+    const place = () => {
+      const b = btn.current; if (!b) return;
+      const bar = b.closest(".fn-bar"); if (!bar) return;
+      let x = 0, el = b;
+      while (el && el !== bar) { x += el.offsetLeft; el = el.offsetParent; }
+      const main = b.closest(".fn-bar-main"); if (main) x -= main.scrollLeft;
+      const w = 300, mid = x + b.offsetWidth / 2;
+      setLeft(Math.max(8, Math.min(bar.clientWidth - w - 8, mid - w / 2)));
+    };
+    React.useLayoutEffect(() => { if (open) place(); }, [open]);
+    React.useEffect(() => {
+      if (!open) return;
+      const onDown = (e) => { if (pop.current && !pop.current.contains(e.target) && btn.current && !btn.current.contains(e.target)) setOpen(false); };
+      const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); } };
+      const onResize = () => place();
+      document.addEventListener("pointerdown", onDown, true);
+      document.addEventListener("keydown", onKey, true);
+      window.addEventListener("resize", onResize);
+      return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey, true); window.removeEventListener("resize", onResize); };
+    }, [open]);
+    const fill = ((speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100;
+    return (
+      <React.Fragment>
+        <button type="button" ref={btn} className={"fn-tempo-btn" + (speed !== 1 ? " changed" : "")} onClick={() => setOpen(!open)}
+          aria-haspopup="dialog" aria-expanded={open} aria-label={"Tempo " + now + " beats per minute, " + pct + " percent. Change tempo"} title="Tempo: make the song slower or faster">
+          <Icon n="tempo" size={18} />
+          <span className="fn-tempo-num">{now}</span><span className="fn-tempo-unit">bpm</span>
+          {speed !== 1 ? <span className="fn-tempo-pct">{pct}%</span> : null}
+        </button>
+        {open ? (
+          <div className="fn-tempo-pop" ref={pop} role="dialog" aria-label="Tempo" style={{ left: left + "px" }}>
+            <div className="fn-tempo-head">
+              <strong>Tempo</strong>
+              <span><b>{now}</b> bpm · {pct}%</span>
+            </div>
+            <div className="fn-tempo-row">
+              <button type="button" className="fn-tempo-step" aria-label="Slower" onClick={() => onChange(speed - 0.05)} disabled={speed <= SPEED_MIN}><Icon n="minus" size={16} /></button>
+              <input type="range" className="fn-tempo-range" min={SPEED_MIN} max={SPEED_MAX} step={0.05} value={speed}
+                style={{ "--fill": fill + "%" }} aria-label="Tempo" aria-valuetext={now + " bpm, " + pct + "%"}
+                onChange={(e) => onChange(parseFloat(e.target.value))} autoFocus />
+              <button type="button" className="fn-tempo-step" aria-label="Faster" onClick={() => onChange(speed + 0.05)} disabled={speed >= SPEED_MAX}><Icon n="plus" size={16} /></button>
+            </div>
+            <div className="fn-tempo-scale" aria-hidden="true"><span>Slow</span><span>Song speed</span><span>Fast</span></div>
+            <div className="fn-tempo-presets">
+              {TEMPO_PRESETS.map(([v, l]) => (
+                <button key={v} type="button" aria-pressed={Math.abs(speed - v) < 0.001} onClick={() => onChange(v)}>
+                  {l}<small>{Math.round(bpm * v)} bpm</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </React.Fragment>
     );
   }
 
@@ -1728,7 +1797,7 @@
       v = Math.max(1, Math.min(totalBars, parseInt(v, 10) || 1));
       if (which === "s") { setLoopStart(v); if (v > loopEnd) setLoopEnd(v); } else { setLoopEnd(v); if (v < loopStart) setLoopStart(v); }
     }
-    const setSpeedClamped = (v) => setSpeed(Math.round(Math.max(0.25, Math.min(1.5, v)) * 100) / 100);
+    const setSpeedClamped = (v) => setSpeed(Math.round(Math.max(SPEED_MIN, Math.min(SPEED_MAX, v)) * 100) / 100);
 
     const expectedText = snap.expected && snap.expected.length ? snap.expected.join(" + ") : "";
     let status = demo ? "Press Play to hear the song." : "Press Play, then play the notes you see on a piano or on the keys below.";
@@ -1762,11 +1831,7 @@
                 <Icon n={snap.playing ? "pause" : "play"} size={22} />
               </button>
               <button type="button" className="fn-icon-btn" onClick={restart} aria-label="Restart" title="Restart"><Icon n="restart" /></button>
-              <div className="fn-stepper" role="group" aria-label="Speed">
-                <button type="button" aria-label="Slower" onClick={() => setSpeedClamped(speed - 0.1)} disabled={speed <= 0.25}><Icon n="minus" size={16} /></button>
-                <output aria-live="off">{Math.round(speed * 100)}%</output>
-                <button type="button" aria-label="Faster" onClick={() => setSpeedClamped(speed + 0.1)} disabled={speed >= 1.5}><Icon n="plus" size={16} /></button>
-              </div>
+              <TempoControl speed={speed} bpm={g.bpm} onChange={setSpeedClamped} />
               <Seg label="Hands" value={hands} onChange={setHands} options={[
                 ["L", <React.Fragment><i className="fn-dot l" aria-hidden="true" />Left</React.Fragment>],
                 ["R", <React.Fragment><i className="fn-dot r" aria-hidden="true" />Right</React.Fragment>],
