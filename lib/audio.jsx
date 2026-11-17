@@ -146,14 +146,16 @@
     return best;
   }
 
-  function playPiano(name, dur = 0.9, velocity = 0.8) {
+  // `delay` (seconds, optional) books the note that far ahead on the audio clock.
+  function playPiano(name, dur = 0.9, velocity = 0.8, delay = 0) {
     if (!ok()) return;
     const midi = midiFromName(name); if (midi == null) return;
     ifReady((c) => {
       decodeSamples(c);
       const sm = nearestSample(midi);
-      if (sm === null || Math.abs(sm - midi) > 2) { synthPiano(c, name, dur, velocity); return; }
-      const t = c.currentTime;
+      // a few notes above the top recording (C7) are pitched up from it rather than swapped for the synth voice
+      if (sm === null || Math.abs(sm - midi) > 4) { synthPiano(c, name, dur, velocity, delay); return; }
+      const t = c.currentTime + (delay > 0 ? delay : 0);
       const src = c.createBufferSource();
       src.buffer = sampleBuf[sm];
       src.playbackRate.value = Math.pow(2, (midi - sm) / 12);
@@ -173,9 +175,9 @@
   }
 
   // simple piano-ish voice: 2 detuned saws + filter env + amp env
-  function synthPiano(c, name, dur, velocity) {
+  function synthPiano(c, name, dur, velocity, delay) {
     const f = hzFromName(name); if (!f) return;
-    const t = c.currentTime;
+    const t = c.currentTime + (delay > 0 ? delay : 0);
 
     const osc1 = c.createOscillator(); osc1.type = "triangle"; osc1.frequency.value = f;
     const osc2 = c.createOscillator(); osc2.type = "sine";     osc2.frequency.value = f * 2;

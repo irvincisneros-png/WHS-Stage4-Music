@@ -13,6 +13,7 @@
   const LOOK_BARS = 2;        // how many bars you can see falling
   const LATENCY = 0.09;       // s between a key press and the detector noticing
   const TOL_S = 0.25;         // timing window (s) when not waiting
+  const LOOK_S = 0.12;        // the app's own notes are booked this far ahead on the audio clock, so their timing never depends on the frame rate
   const WAIT_LATE_S = 2.5;    // wait mode: notes later than this count as misses
   const SENS_KEYS = ["low", "medium", "high"];
   const SENS_LABELS = ["Low", "Medium", "High"];
@@ -36,7 +37,8 @@
       const s = packed[k], m = s.m;
       out.push({
         key: k, name: s.name, tag: s.tag, level: s.level || "Hard", song: { note: s.note },
-        model: { bpb: m.b, bpm: m.p, totalBeats: m.t, sig: m.s || null, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R" })) },
+        // m.tm: the song's own tempo changes, [[beat, bpm], ...]. A 5th number on a note is how long it rings with the pedal down.
+        model: { bpb: m.b, bpm: m.p, totalBeats: m.t, sig: m.s || null, tempo: m.tm || null, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R", ring: e[4] || 0 })) },
       });
     });
     return out;
@@ -143,7 +145,7 @@
     notes.sort((a, b) => a.start - b.start || a.midi - b.midi);
     const g = {
       meta, key: meta.key, name: meta.name, bpm: model.bpm, bpb: model.bpb,
-      totalBeats: model.totalBeats, notes, sig: model.sig || null,
+      totalBeats: model.totalBeats, notes, sig: model.sig || null, tempo: model.tempo || null,
       opts: { hands: "B", wait: true, speed: 1, metro: false, labels: true, otherHand: false, demo: false, loop: false, loopStart: 1, loopEnd: model.totalBeats / model.bpb },
       flash: {}, tap: {}, geo: null,
     };
@@ -160,7 +162,7 @@
   function reindex(g) {
     const b = g.beat - 1e-6;
     g.chordIdx = g.chords.findIndex((c) => c.start >= b); if (g.chordIdx < 0) g.chordIdx = g.chords.length;
-    g.otherIdx = g.other.findIndex((n) => n.start >= b); if (g.otherIdx < 0) g.otherIdx = g.other.length;
+    g.sndIdx = g.notes.findIndex((n) => n.start >= b); if (g.sndIdx < 0) g.sndIdx = g.notes.length;
     g.lastInt = Math.ceil(g.beat - 1e-9) - 1;
   }
   function resetAll(g) {
@@ -192,6 +194,26 @@
   }
   const pctOf = (c) => (c.total ? Math.round((c.hits / c.total) * 100) : 0);
 
+  /* beats per second right now: the song's tempo (which may change along the way) times the speed setting */
+  function bpsOf(g) {
+    let bpm = g.bpm; const t = g.tempo;
+    if (t && t.length) {
+      let i = g.tempoIdx || 0;
+      if (i >= t.length || t[i][0] > g.beat) i = 0;
+      while (i + 1 < t.length && t[i + 1][0] <= g.beat) i++;
+      g.tempoIdx = i; bpm = t[i][1];
+    }
+    return bpm * g.opts.speed / 60;
+  }
+  /* how long a model lasts in seconds */
+  function songSecs(m) {
+    const t = m.tempo;
+    if (!t || !t.length) return (m.totalBeats / m.bpm) * 60;
+    let s = 0;
+    for (let i = 0; i < t.length; i++) { const a = i ? t[i][0] : 0, z = i + 1 < t.length ? t[i + 1][0] : m.totalBeats; if (z > a) s += (z - a) / t[i][1] * 60; }
+    return s;
+  }
+
   function play(g) {
     if (g.finished) resetAll(g);
     if (g.needCount || g.countNext) { g.needCount = false; g.countNext = false; g.countLeft = g.bpb; g.lastCountInt = g.bpb + 1; }
@@ -199,15 +221,36 @@
   }
   function pause(g) { g.playing = false; }
 
+  /* The app's own notes: every note in "Play it for me", else the other hand.
+     Each is booked a moment ahead for its exact time, so the rhythm stays even
+     on a slow screen. A note rings for as long as the pedal holds it (n.ring). */
+  function bookSounds(g, bps, now, H, endB) {
+    const o = g.opts;
+    let ahead = g.beat + LOOK_S * bps;
+    if (g.waiting) ahead = g.beat;
+    else if (o.wait && !o.demo && g.chordIdx < g.chords.length) ahead = Math.min(ahead, g.chords[g.chordIdx].start);
+    if (o.loop) ahead = Math.min(ahead, endB - 1e-6);
+    while (g.sndIdx < g.notes.length && g.notes[g.sndIdx].start <= ahead + 1e-9) {
+      const n = g.notes[g.sndIdx++];
+      if (o.demo || (o.otherHand && !isScored(g, n))) {
+        H.playNote(n.midi, Math.max(0.3, Math.max(n.dur, n.ring || 0) / bps), o.demo ? 0.5 : 0.7, now + Math.max(0, (n.start - g.beat) / bps) * 1000);
+      }
+    }
+  }
+
   function update(g, dt, now, H) {
     if (!g.playing) return;
-    const o = g.opts, bps = g.bpm * o.speed / 60, tolB = TOL_S * bps;
+    const o = g.opts, bps = bpsOf(g), tolB = TOL_S * bps;
     // count-in
     if (g.countLeft > 0) {
       g.countLeft -= dt * bps;
       const ci = Math.ceil(g.countLeft - 1e-9);
       if (ci < g.lastCountInt && ci >= 1) { g.lastCountInt = ci; H.click(ci === g.bpb); g.ignoreUntil = now + 70; }
-      if (g.countLeft <= 0) { g.countLeft = 0; reindex(g); }
+      if (g.countLeft <= 0) {
+        // the song starts now: its first notes are booked from this exact moment
+        g.countLeft = 0; reindex(g);
+        bookSounds(g, bps, now, H, o.loop ? Math.min(g.totalBeats, Math.max(o.loopStart, o.loopEnd) * g.bpb) : g.totalBeats);
+      }
       return;
     }
     if (g.waiting) {
@@ -219,11 +262,10 @@
       const c = g.chords[g.chordIdx++];
       if (TEST_SYNTH) H.testPlay(c.midis, c.notes[0].dur / bps);
       if (o.demo) {
-        // "Play it for me": the app plays every note, nothing is scored
+        // "Play it for me": nothing is scored (the sound itself is booked further down)
         c.notes.forEach((n) => {
           if (n.status !== "pending") return;
           n.status = "hit"; n.hitAt = now; g.flash[n.midi] = now;
-          H.playNote(n.midi, Math.max(0.3, n.dur / bps), 0.5);
         });
         continue;
       }
@@ -236,17 +278,13 @@
       g.lastInt++;
       if (o.metro) { H.click(((g.lastInt % g.bpb) + g.bpb) % g.bpb === 0); g.ignoreUntil = now + 70; }
     }
-    // other hand plays for the student
-    while (g.otherIdx < g.other.length && g.other[g.otherIdx].start <= g.beat + 1e-9) {
-      const n = g.other[g.otherIdx++];
-      if (o.otherHand || o.demo) H.playNote(n.midi, Math.max(0.3, n.dur / bps), o.demo ? 0.5 : 0.7);
-    }
+    const endB = o.loop ? Math.min(g.totalBeats, Math.max(o.loopStart, o.loopEnd) * g.bpb) : g.totalBeats;
+    bookSounds(g, bps, now, H, endB);
     if (g.waiting) return;
     // misses (free-play mode)
     if (!o.wait) g.scored.forEach((n) => { if (n.status === "pending" && n.start + tolB < g.beat) n.status = "miss"; });
     // loop / finish
     if (o.loop) {
-      const endB = Math.min(g.totalBeats, Math.max(o.loopStart, o.loopEnd) * g.bpb);
       if (g.beat >= endB) {
         const a = (Math.max(1, o.loopStart) - 1) * g.bpb;
         const inRange = g.scored.filter((n) => n.start >= a - 1e-6 && n.start < endB - 1e-6);
@@ -269,7 +307,7 @@
   /* a note was heard `age` seconds ago */
   function onHeard(g, midi, now, age) {
     if (!g.playing || g.countLeft > 0) return false;
-    const bps = g.bpm * g.opts.speed / 60, tolB = TOL_S * bps;
+    const bps = bpsOf(g), tolB = TOL_S * bps;
     const ref = g.waiting ? g.beat : g.beat - age * bps;
     let best = null, bd = 1e9;
     for (const n of g.scored) {
@@ -288,7 +326,7 @@
 
   function candidates(g) {
     if (!g.playing || g.countLeft > 0) return [];
-    const bps = g.bpm * g.opts.speed / 60, a = g.beat - 0.6 * bps, b = g.beat + 1.0 * bps;
+    const bps = bpsOf(g), a = g.beat - 0.6 * bps, b = g.beat + 1.0 * bps;
     const set = new Set();
     for (const n of g.scored) {
       if (n.start > b) break;
@@ -962,10 +1000,14 @@
   function drawStave(c, g, W, H, dark) {
     const S = g.stave || (g.stave = buildStave(g)), col = staveColors(dark), both = S.mode === "both";
     const bpb = g.bpb, beat = g.beat;
+    const names = !!g.opts.staveNames;                          // letter names under the notes
     // spacing between stave lines, from the height: room for ledger lines above, between and below
-    const s = Math.max(4.5, Math.min(13, H / (both ? 18.5 : 10.5)));
-    const y0 = (H - (both ? 12.5 : 4) * s) / 2;                 // top line of the upper stave
-    const top = { treble: y0, bass: both ? y0 + 8.5 * s : y0 };
+    // (more room between and below when the letters are shown)
+    const above = both || names ? 3 : 3.25, gap = names ? 7 : 4.5, below = both ? (names ? 4.5 : 3) : (names ? 5 : 3.25);
+    const span = both ? 8 + gap : 4;
+    const s = Math.max(4.5, Math.min(13, H / (above + span + below)));
+    const y0 = (H - span * s) * above / (above + below);        // top line of the upper stave
+    const top = { treble: y0, bass: both ? y0 + (4 + gap) * s : y0 };
     const staves = both ? ["treble", "bass"] : [S.mode];
     const yOf = (staff, step) => top[staff] + 4 * s - (step - STAFF_BOT[staff]) * s / 2;
     const nk = Math.abs(S.k), xLeft = Math.max(8, s * 0.9), xKey = xLeft + 3.4 * s, xTime = xKey + nk * 1.05 * s + (nk ? 0.5 * s : 0);
@@ -1014,6 +1056,7 @@
 
     // notes
     const gone = (n) => n.status === "hit" || n.status === "skip";
+    const stacks = new Map();
     const items = S.items, tMin = beat - (xNow - headEnd + 2 * s) / ppb, tMax = beat + (W - xNow + 2 * s) / ppb;
     let lo = 0, hi = items.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (items[m].start < tMin) lo = m + 1; else hi = m; }
@@ -1035,12 +1078,14 @@
       // stem and flags
       const yLo = yOf(st, lowest), yHi = yOf(st, highest);
       c.strokeStyle = hand; c.fillStyle = hand;
+      let inkLow = yLo + 0.5 * s;                               // the lowest point this note reaches
       if (v.head !== "w") {
         const bm = it.beam ? beamOf(it.beam) : null;
         const xs = it.up ? x + hw - 0.05 * s : x - hw + 0.05 * s;
         const tip = bm ? bm.y0 + bm.slope * (xs - bm.x0) : it.up ? yHi - 3.3 * s : yLo + 3.3 * s;
         c.lineWidth = Math.max(1, 0.11 * s); c.lineCap = "butt";
         c.beginPath(); c.moveTo(xs, it.up ? yLo : yHi); c.lineTo(xs, tip); c.stroke();
+        if (!it.up) inkLow = Math.max(inkLow, tip + (bm && bm.items.every((q) => q.val.trip) ? 1.25 * s : 0.1 * s));
         if (bm && bm.drawn !== frame) {
           // the whole beam is drawn once, with the first of its notes we meet
           bm.drawn = frame;
@@ -1101,9 +1146,37 @@
           c.font = "700 " + Math.max(8, Math.round(s * 0.95)) + "px " + FONT; c.textAlign = "center";
           const lab = Math.abs(h.ott) > 1 ? "15" : "8";
           c.fillText(lab, hx, h.ott > 0 ? y - 1.1 * s : y + 1.9 * s);
+          if (h.ott < 0) inkLow = Math.max(inkLow, y + 2.3 * s);
         }
       }
+      // letter names are drawn after the notes. Notes that sound together on one stave share a stack.
+      if (names) {
+        const sk = st + "|" + Math.round(it.start * 32);
+        let stk = stacks.get(sk);
+        if (!stk) { stk = { x, st, past, ink: inkLow, heads: [] }; stacks.set(sk, stk); }
+        stk.ink = Math.max(stk.ink, inkLow);
+        heads.forEach((h) => stk.heads.push(h));
+      }
       c.globalAlpha = 1;
+    }
+
+    // letter names: a row just under the stave, lower where a note itself reaches down there
+    if (names) {
+      const fs = Math.max(9, Math.round(s * 1.2)), step = fs * 1.02;
+      c.font = "700 " + fs + "px " + FONT; c.textAlign = "center"; c.textBaseline = "middle";
+      stacks.forEach((stk) => {
+        const hs = stk.heads.length > 1 ? stk.heads.slice().sort((a, b) => b.n.midi - a.n.midi) : stk.heads; // a chord reads top note first
+        let ty = Math.max(top[stk.st] + 5.55 * s, stk.ink + 0.95 * s);
+        ty = Math.max(fs * 0.6, Math.min(ty, H - fs * 0.6 - (hs.length - 1) * step));
+        hs.forEach((h) => {
+          const miss = h.n.status === "miss";
+          c.globalAlpha = (gone(h.n) ? 0.38 : miss ? 0.85 : 1) * stk.past;
+          c.fillStyle = miss ? col.miss : h.n.hand === "R" ? col.R : col.L;
+          c.fillText(h.name || (h.name = nameIn(g, h.n.midi, false)), stk.x, ty);
+          ty += step;
+        });
+      });
+      c.globalAlpha = 1; c.textBaseline = "alphabetic";
     }
 
     // rests
@@ -1269,6 +1342,7 @@
               <h3 id="fn-sec-display">Display</h3>
               <Switch label="Note names" checked={s.labels} onChange={s.setLabels} />
               <Switch label="Show the stave" checked={s.stave} onChange={s.setStave} hint="See the notes as written music, moving with the song." />
+              {s.stave ? <Switch label="Letters under the notes" checked={s.staveNames} onChange={s.setStaveNames} hint="Each note on the stave shows its letter name." /> : null}
               <div className="fn-row">
                 <span className="fn-row-label">Look</span>
                 <Seg label="Look" value={s.stage} onChange={s.setStage} options={[["dark", "Dark"], ["light", "Light"]]} />
@@ -1324,6 +1398,7 @@
     const [metro, setMetro] = React.useState(!!saved.metro);
     const [labels, setLabels] = React.useState(saved.labels !== false);
     const [stave, setStave] = React.useState(!!saved.stave);
+    const [staveNames, setStaveNames] = React.useState(saved.staveNames !== false);
     const [otherHand, setOtherHand] = React.useState(false);
     const [demo, setDemo] = React.useState(false);
     const [loop, setLoop] = React.useState(false);
@@ -1351,18 +1426,19 @@
     // push options into the engine; changing hands / wait starts the song over
     React.useEffect(() => {
       const o = g.opts, structural = o.hands !== hands || o.wait !== wait || o.demo !== demo;
-      Object.assign(o, { hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd });
+      Object.assign(o, { hands, wait, speed, metro, labels, staveNames, otherHand, demo, loop, loopStart, loopEnd });
       if (structural) { buildSets(g); resetAll(g); detRef.current.reset(); }
       else if (!g.playing && g.needCount) { g.beat = homeBeat(g); reindex(g); }
-    }, [hands, wait, speed, metro, labels, otherHand, demo, loop, loopStart, loopEnd]);
+    }, [hands, wait, speed, metro, labels, staveNames, otherHand, demo, loop, loopStart, loopEnd]);
     React.useEffect(() => {
       detRef.current.setSens(SENS_KEYS[sens]);
-      saveSettings({ sens, wait, metro, labels, stave });
-    }, [sens, wait, metro, labels, stave]);
+      saveSettings({ sens, wait, metro, labels, stave, staveNames });
+    }, [sens, wait, metro, labels, stave, staveNames]);
 
     const hooks = React.useMemo(() => ({
       click: (acc) => { window.MusicAudio && window.MusicAudio.click(acc); },
-      playNote: (midi, dur, vel) => { window.MusicAudio && window.MusicAudio.playPiano(FC.midiToName(midi), dur, vel || 0.7); },
+      // `at` (optional): the moment the note should sound, on the performance.now() clock
+      playNote: (midi, dur, vel, at) => { window.MusicAudio && window.MusicAudio.playPiano(FC.midiToName(midi), dur, vel || 0.7, at ? Math.max(0, (at - performance.now()) / 1000) : 0); },
       testPlay: (midis, dur) => { if (MIC.listening) MIC.synth(midis, dur); },
       finished: (res) => { if (res.stars === 3 && window.MusicAudio) window.MusicAudio.ding(true); },
     }), []);
@@ -1728,7 +1804,7 @@
           </div>
           <div className="sr-only" aria-live="polite">{status}{snap.lastPass != null ? " Last loop: " + snap.lastPass + "%" : ""}</div>
           {stave ? (
-            <div className={"fn-stave" + (twoStaves ? "" : " one")}>
+            <div className={"fn-stave" + (twoStaves ? "" : " one") + (staveNames ? " names" : "")}>
               <canvas ref={staveRef} role="img" aria-label={"The notes of " + g.name + " written on a stave"} />
             </div>
           ) : null}
@@ -1834,7 +1910,7 @@
         {drawer ? (
           <SettingsDrawer onClose={() => setDrawer(false)} s={{
             wait, setWait, metro, setMetro, loop, setLoop, loopStart, loopEnd, setBar, totalBars,
-            labels, setLabels, stave, setStave, stage, setStage, sens, setSens, listening, level: snap.level || 0, micOk: !!snap.micOk,
+            labels, setLabels, stave, setStave, staveNames, setStaveNames, stage, setStage, sens, setSens, listening, level: snap.level || 0, micOk: !!snap.micOk,
             startListening, stopListening, otherHand, setOtherHand, demo, setDemo,
           }} />
         ) : null}
@@ -1856,7 +1932,7 @@
       const y = padY + (hi - e.midi + off) * rowH, h = Math.max(2.4, rowH - 0.2);
       out[e.hand] += "M" + x.toFixed(1) + " " + y.toFixed(1) + "h" + w.toFixed(1) + "v" + h.toFixed(1) + "h-" + w.toFixed(1) + "z";
     });
-    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, sig: m.sig ? m.sig[0] + "/" + m.sig[1] : m.bpb + "/4", secs: (m.totalBeats / m.bpm) * 60, W, H });
+    return (thumbCache[meta.key] = { ...out, bpb: m.bpb, sig: m.sig ? m.sig[0] + "/" + m.sig[1] : m.bpb + "/4", secs: songSecs(m), W, H });
   }
   function Thumb({ meta }) {
     const t = thumbPaths(meta);
