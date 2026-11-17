@@ -2778,6 +2778,9 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 /* ----- optional stave strip (written music above the falling notes) ----- */
 .fn-stave { flex: none; position: relative; height: clamp(124px, 24cqh, 226px); background: rgb(13,18,38); border-bottom: 1px solid var(--fn-hair); overflow: hidden; }
 .fn-stave.one { height: clamp(88px, 15cqh, 140px); }
+/* with letter names under the notes the strip is a little taller */
+.fn-stave.names { height: clamp(150px, 29cqh, 274px); }
+.fn-stave.one.names { height: clamp(100px, 17cqh, 160px); }
 .fn-app[data-stage="light"] .fn-stave { background: #fff; }
 .fn-stave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
@@ -3045,6 +3048,8 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
   .fn-timeline { height: 12px; }
   .fn-stave { height: 104px; }
   .fn-stave.one { height: 76px; }
+  .fn-stave.names { height: 126px; }
+  .fn-stave.one.names { height: 87px; }
   .fn-track { height: 4px; }
   .fn-barbtn { width: 24px; height: 24px; }
   .fn-hud { top: 6px; }
