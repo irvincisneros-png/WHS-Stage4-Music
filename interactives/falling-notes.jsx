@@ -2124,6 +2124,46 @@
   /* The rows under "Your songs" and "Start here". One row per entry, in this order; a song goes on the
      row whose tags list has its tag. To add a category, add a line here. Songs with a tag nobody lists
      fall into "More songs", so nothing is ever hidden. */
+  /* ------------------------------------------------------------ my songs
+     MIDI files a student opens are kept in this browser (IndexedDB), on this
+     device only. Nothing is uploaded. */
+  const MY_DB = "fallingNotesMySongs", MY_MAX = 60, MY_TAG = "MY SONG";
+  function myDb() {
+    return new Promise((ok, no) => {
+      try {
+        const r = indexedDB.open(MY_DB, 1);
+        r.onupgradeneeded = () => { r.result.createObjectStore("songs", { keyPath: "id" }); };
+        r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+      } catch (e) { no(e); }
+    });
+  }
+  function myTx(mode, fn) {
+    return myDb().then((db) => new Promise((ok, no) => {
+      const t = db.transaction("songs", mode), st = t.objectStore("songs"), out = fn(st);
+      t.oncomplete = () => { db.close(); ok(out && out.result !== undefined ? out.result : undefined); };
+      t.onerror = () => { db.close(); no(t.error); }; t.onabort = () => { db.close(); no(t.error); };
+    }));
+  }
+  const MySongs = {
+    all: () => myTx("readonly", (st) => st.getAll()),
+    put: (rec) => myTx("readwrite", (st) => { st.put(rec); }),
+    del: (id) => myTx("readwrite", (st) => { st.delete(id); }),
+  };
+  /* a rough level from how busy the music is: notes a second, and whether both hands play */
+  function guessLevel(m) {
+    const ev = m.events || [], secs = Math.max(1, (m.totalBeats || 1) * 60 / (m.bpm || 100));
+    const nps = ev.length / secs, both = ev.some((e) => e.hand === "L") && ev.some((e) => e.hand === "R");
+    return nps < 1.6 && !both ? "Easy" : nps < 3.5 ? "Medium" : "Hard";
+  }
+  function myMeta(rec) {
+    let m = FC.parseMidi(rec.buf);
+    if (m.events.length > 4000) m = { ...m, events: m.events.slice(0, 4000) };
+    return {
+      key: "my:" + rec.id, name: rec.name, size: rec.size, tag: MY_TAG, level: guessLevel(m), mine: true, added: rec.added,
+      song: { note: "Your file · saved on this device" }, model: m,
+    };
+  }
+
   const SHELF_DEFS = [
     { id: "class", title: "Class pieces & warm-ups", tags: ["Y7 PIANO", "Y7 PIANO+", "WARM-UP"] },
     { id: "classical", title: "Classical", tags: ["CLASSICAL", "BAROQUE", "ROMANTIC", "REPERTOIRE"] },
@@ -2135,15 +2175,18 @@
   const RAIL_MAX = 20;   // cards on a row before the "See all" tile
   const byLevelName = (a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name, undefined, { numeric: true });
   const tagOf = (s) => String(s.tag || "").toUpperCase();
-  function buildShelves(songs, favs, recent) {
+  function buildShelves(songs, favs, recent, myOk) {
     const byKey = {}; songs.forEach((s) => { byKey[s.key] = s; });
     const out = [], yours = [];
     favs.concat(recent).forEach((k) => { if (byKey[k] && yours.indexOf(byKey[k]) < 0) yours.push(byKey[k]); });
     if (yours.length) out.push({ id: "yours", title: "Your songs", songs: yours });
-    const easy = songs.filter((s) => s.level === "Easy").sort(byLevelName);
+    const mine = songs.filter((s) => s.mine).sort((a, b) => (b.added || 0) - (a.added || 0));
+    if (myOk || mine.length) out.push({ id: "mine", title: "My songs", songs: mine, mine: true });
+    const easy = songs.filter((s) => s.level === "Easy" && !s.mine).sort(byLevelName);
     if (easy.length) out.push({ id: "start", title: "Start here", songs: easy });
     const taken = {};
     SHELF_DEFS.forEach((d) => d.tags.forEach((t) => { taken[t] = 1; }));
+    taken[MY_TAG] = 1;
     SHELF_DEFS.concat([{ id: "more", title: "More songs", tags: null }]).forEach((d) => {
       const list = songs.filter((s) => (d.tags ? d.tags.indexOf(tagOf(s)) >= 0 : !taken[tagOf(s)])).sort(byLevelName);
       if (list.length) out.push({ id: d.id, title: d.title, songs: list });
@@ -2173,7 +2216,7 @@
       </button>
     );
   }
-  function SongCard({ s, fav, openSong, toggleFav }) {
+  function SongCard({ s, fav, openSong, toggleFav, onRemove }) {
     const stars = bestStars(s.key), t = thumbPaths(s), lv = Math.max(0, LEVELS.indexOf(s.level)) + 1;
     return (
       <li className="fn-song">
@@ -2195,12 +2238,16 @@
           </span>
         </button>
         <Heart name={s.name} on={fav} onToggle={() => toggleFav(s.key)} />
+        {s.mine && onRemove ? (
+          <button type="button" className="fn-remove" aria-label={"Remove " + s.name + " from My songs"} title="Remove from this device"
+            onClick={() => onRemove(s)}><Icon n="close" size={15} /></button>
+        ) : null}
       </li>
     );
   }
 
   /* one horizontal row: swipe or scroll it, or use the arrows with a mouse */
-  function Shelf({ sh, favSet, openSong, toggleFav, onAll }) {
+  function Shelf({ sh, favSet, openSong, toggleFav, onAll, onAdd, onRemove }) {
     const rail = React.useRef(null);
     const [edge, setEdge] = React.useState({ l: false, r: false });
     const list = sh.songs.slice(0, RAIL_MAX), more = sh.songs.length > RAIL_MAX;
@@ -2229,7 +2276,7 @@
         <div className="fn-shelf-head">
           <h3 id={id}>{sh.title}<span className="fn-shelf-count">{sh.songs.length}</span></h3>
           <div className="fn-shelf-ctl">
-            <button type="button" className="fn-seeall" data-shelf={sh.id} onClick={() => onAll(sh.id)} aria-label={"See all " + sh.title + " songs"}>See all</button>
+            {sh.songs.length ? <button type="button" className="fn-seeall" data-shelf={sh.id} onClick={() => onAll(sh.id)} aria-label={"See all " + sh.title + " songs"}>See all</button> : null}
             <span className="fn-arrows" hidden={!edge.l && !edge.r}>
               <button type="button" className="fn-arrow" onClick={() => go(-1)} disabled={!edge.l} aria-label={"Scroll " + sh.title + " back"}><Icon n="chevL" size={18} /></button>
               <button type="button" className="fn-arrow" onClick={() => go(1)} disabled={!edge.r} aria-label={"Scroll " + sh.title + " forward"}><Icon n="chevR" size={18} /></button>
@@ -2237,7 +2284,16 @@
           </div>
         </div>
         <ul className={"fn-rail" + (edge.l ? " fade-l" : "") + (edge.r ? " fade-r" : "")} ref={rail}>
-          {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+          {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} onRemove={onRemove} />)}
+          {sh.mine && onAdd ? (
+            <li className="fn-song fn-song-more">
+              <button type="button" className="fn-morecard fn-addcard" onClick={onAdd}>
+                <span className="fn-add-icon" aria-hidden="true"><Icon n="plus" size={26} /></span>
+                <span><strong>Add a MIDI file</strong></span>
+                <span className="fn-add-note">Saved on this device only. Nothing is uploaded.</span>
+              </button>
+            </li>
+          ) : null}
           {more ? (
             <li className="fn-song fn-song-more">
               <button type="button" className="fn-morecard" onClick={() => onAll(sh.id)}>
@@ -2252,7 +2308,7 @@
     );
   }
 
-  function LibraryBody({ shelves, page, shown, searching, query, favs, openSong, toggleFav, setView, clearSearch }) {
+  function LibraryBody({ shelves, page, shown, searching, query, favs, openSong, toggleFav, setView, clearSearch, onAdd, onRemove }) {
     const [sort, setSort] = React.useState("level");
     const root = React.useRef(null), back = React.useRef(null), saved = React.useRef(0), from = React.useRef(null);
     const favSet = React.useMemo(() => { const o = {}; favs.forEach((k) => { o[k] = true; }); return o; }, [favs]);
@@ -2273,7 +2329,7 @@
 
     let body;
     if (!page && !searching) {
-      body = shelves.map((sh) => <Shelf key={sh.id} sh={sh} favSet={favSet} openSong={openSong} toggleFav={toggleFav} onAll={openAll} />);
+      body = shelves.map((sh) => <Shelf key={sh.id} sh={sh} favSet={favSet} openSong={openSong} toggleFav={toggleFav} onAll={openAll} onAdd={onAdd} onRemove={onRemove} />);
     } else {
       body = (
         <section className="fn-page" aria-labelledby="fn-page-title">
@@ -2288,7 +2344,7 @@
           </div>
           {list.length ? (
             <ul className="fn-songs">
-              {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+              {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} onRemove={onRemove} />)}
             </ul>
           ) : (
             <div className="fn-empty" role="status">
@@ -2374,7 +2430,21 @@
     const [view, setView] = React.useState(null);   // a shelf's "See all" page: its id, or null for the shelves
     const [favs, setFavs] = React.useState(() => readKeys("fallingNotes.favs"));
     const fileRef = React.useRef(null), appRef = React.useRef(null);
-    const songs = React.useMemo(songList, []);
+    const builtIn = React.useMemo(songList, []);
+    const [mine, setMine] = React.useState([]);
+    const [myOk, setMyOk] = React.useState(false);   // this browser can keep songs
+    const songs = React.useMemo(() => builtIn.concat(mine), [builtIn, mine]);
+    React.useEffect(() => {
+      let gone = false;
+      if (!window.indexedDB) return;
+      MySongs.all().then((recs) => {
+        if (gone) return;
+        const out = [];
+        (recs || []).forEach((r) => { try { out.push(myMeta(r)); } catch (e) { /* a file that no longer reads is skipped */ } });
+        setMine(out); setMyOk(true);
+      }).catch(() => {});
+      return () => { gone = true; };
+    }, []);
     const canFs = React.useMemo(FS_OK, []);
     const phone = React.useMemo(() => mq("(pointer: coarse)"), []);
     const setStage = (v) => { setStageState(v); saveSettings({ stage: v }); };
@@ -2463,24 +2533,36 @@
       if (!file) return;
       if (file.size > 3 * 1024 * 1024) { setMsg("That file is too big. Try a smaller MIDI file."); return; }
       const done = (buf) => {
-        try {
-          const m = FC.parseMidi(buf);
-          const cut = m.events.length > 4000;
-          openSong({
-            key: "custom", name: file.name.replace(/\.midi?$/i, ""), tag: "YOUR FILE", level: "Your file",
-            model: cut ? { ...m, events: m.events.slice(0, 4000) } : m,
-          });
-          if (cut) setMsg("That is a long file. Only the first part is used.");
-        } catch (e) {
+        const name = file.name.replace(/\.midi?$/i, "");
+        let m;
+        try { m = FC.parseMidi(buf); } catch (e) {
           setMsg(e && e.friendly ? e.message + " Try a different MIDI file." : "Sorry, that file did not work. Try a different MIDI file.");
+          return;
         }
+        const cut = m.events.length > 4000;
+        // the same file again: open the saved copy
+        const same = mine.find((s) => s.name === name && s.size === file.size);
+        if (same) { openSong(same); return; }
+        const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, size: file.size, added: Date.now(), buf };
+        let meta;
+        try { meta = myMeta(rec); } catch (e) { meta = null; }
+        if (!meta || !myOk || mine.length >= MY_MAX) {
+          // cannot keep it (private window, storage blocked, or full): play it once
+          openSong({ key: "custom", name, tag: "YOUR FILE", level: "Your file", model: cut ? { ...m, events: m.events.slice(0, 4000) } : m });
+          if (mine.length >= MY_MAX) setMsg("My songs is full, so this one is not saved. Remove a song to make room.");
+          else if (cut) setMsg("That is a long file. Only the first part is used.");
+          return;
+        }
+        MySongs.put(rec).then(() => { setMine((l) => l.concat([meta])); }).catch(() => setMsg("This file plays, but this browser would not save it."));
+        openSong(meta);
+        if (cut) setMsg("That is a long file. Only the first part is used.");
       };
       if (file.arrayBuffer) file.arrayBuffer().then(done).catch(() => setMsg("Sorry, I could not read that file."));
       else { const r = new FileReader(); r.onload = () => done(r.result); r.onerror = () => setMsg("Sorry, I could not read that file."); r.readAsArrayBuffer(file); }
     }
 
     const recentSig = readKeys("fallingNotes.recent").join("|");
-    const shelves = React.useMemo(() => buildShelves(songs, favs, readKeys("fallingNotes.recent")), [songs, favs, recentSig]);
+    const shelves = React.useMemo(() => buildShelves(songs, favs, readKeys("fallingNotes.recent"), myOk), [songs, favs, recentSig, myOk]);
     const page = view ? shelves.find((x) => x.id === view) || null : null;      // the open "See all" page
     const pool = page ? page.songs : songs;
     const count = (l) => pool.filter((s) => s.level === l).length;
@@ -2493,6 +2575,16 @@
       writeKeys("fallingNotes.favs", next); setFavs(next);
     };
     const clearSearch = () => { setQuery(""); setFilter("All"); };
+    const addFile = () => { if (fileRef.current) fileRef.current.click(); };
+    const removeMine = (s) => {
+      if (!window.confirm("Remove “" + s.name + "” from My songs on this device? Your stars for it go too.")) return;
+      MySongs.del(s.key.slice(3)).catch(() => {});
+      setMine((l) => l.filter((x) => x.key !== s.key));
+      const fv = readKeys("fallingNotes.favs").filter((k) => k !== s.key); writeKeys("fallingNotes.favs", fv); setFavs(fv);
+      writeKeys("fallingNotes.recent", readKeys("fallingNotes.recent").filter((k) => k !== s.key));
+      const b = readBest(); Object.keys(b).forEach((k) => { if (k.indexOf(s.key + "|") === 0) delete b[k]; });
+      if (window.Students) window.Students.writeNS("fallingNotes.best", b);
+    };
     const starTotal = songs.reduce((t, s) => t + bestStars(s.key), 0);
     const lastKey = window.Students ? window.Students.readNS("fallingNotes.last", null) : null;
     const last = lastKey ? songs.find((s) => s.key === lastKey) : null;
@@ -2562,7 +2654,7 @@
                 </div>
                 <div className="fn-open">
                   <button type="button" className="fn-textbtn" onClick={() => fileRef.current && fileRef.current.click()}>
-                    <Icon n="upload" size={16} /> Open your own MIDI file
+                    <Icon n="upload" size={16} /> Add your own MIDI file
                   </button>
                   <input ref={fileRef} type="file" accept=".mid,.midi,audio/midi" className="sr-only" aria-label="Open a MIDI file" tabIndex={-1}
                     onChange={(e) => { openFile(e.target.files && e.target.files[0]); e.target.value = ""; }} />
@@ -2571,7 +2663,8 @@
               {msg ? <p className="fn-error" role="alert">{msg}</p> : null}
 
               <LibraryBody shelves={shelves} page={page} shown={shown} searching={searching} query={query} favs={favs}
-                openSong={openSong} toggleFav={toggleFav} setView={setView} clearSearch={clearSearch} />
+                openSong={openSong} toggleFav={toggleFav} setView={setView} clearSearch={clearSearch}
+                onAdd={myOk ? addFile : null} onRemove={removeMine} />
             </div>
           </div>
         )}
