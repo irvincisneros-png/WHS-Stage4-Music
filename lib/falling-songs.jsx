@@ -16,6 +16,8 @@
     hotcross: "Easy", twinkle: "Easy", mary: "Easy", ode: "Easy",
     simpleStone: "Easy", extensionStone: "Medium",
   };
+  // Songs from piano.jsx that Falling Notes leaves out (they stay on the Piano page)
+  window.FALLING_HIDE = ["simpleStone"];
 
   const jbA = "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4";
   const mmP = "D5/.5 B4/.5 A4/.5 G4/.5 A4/.5 B4/.5";

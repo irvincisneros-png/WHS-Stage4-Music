@@ -22,7 +22,9 @@
   function songList() {
     const out = [];
     const base = window.PIANO_SONGS || {};
+    const hide = window.FALLING_HIDE || [];
     Object.keys(base).forEach((k) => {
+      if (hide.indexOf(k) >= 0) return;
       const s = base[k];
       out.push({ key: k, name: s.name, tag: s.tag, level: (window.FALLING_LEVELS || {})[k] || s.level || "Medium", song: s });
     });
