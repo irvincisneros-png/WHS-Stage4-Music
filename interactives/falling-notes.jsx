@@ -439,6 +439,9 @@
       lit: new Array(128).fill(null), litFade: new Uint8Array(128), wait: new Uint8Array(128),
       sx: new Float32Array(SPARKS), sy: new Float32Array(SPARKS), svx: new Float32Array(SPARKS), svy: new Float32Array(SPARKS),
       sz: new Float32Array(SPARKS), sT: new Float64Array(SPARKS), sH: new Uint8Array(SPARKS), sNext: 0, lastNow: 0,
+      held: new Uint8Array(128),            // 1 = right hand, 2 = left hand: a note is sounding and was played (or the app is playing it)
+      gl: [], glN: 0,                        // glow rects for this frame: [x, y, w, h, colour, alpha]
+      glowA: null, glowB: null,              // small offscreen canvases for the bloom (1/4 and 1/12 size)
     };
   }
 
@@ -491,6 +494,27 @@
       top.addColorStop(0, "rgba(0,0,0,0.5)"); top.addColorStop(1, "rgba(0,0,0,0)");
       b.fillStyle = top; b.fillRect(0, 0, W, topH);
     }
+    // two faint pools of hand colour low on the stage (left hand side orange, right hand side blue) and soft dark sides
+    const pool = (cx, rgb, a) => {
+      const rad = Math.max(W, hitY) * 0.62, q = b.createRadialGradient(cx, hitY, 0, cx, hitY, rad);
+      q.addColorStop(0, "rgba(" + rgb + "," + a + ")"); q.addColorStop(1, "rgba(" + rgb + ",0)");
+      b.fillStyle = q; b.fillRect(0, 0, W, hitY);
+    };
+    pool(W * 0.22, HANDS.L.beam, dark ? 0.07 : 0.05);
+    pool(W * 0.78, HANDS.R.beam, dark ? 0.08 : 0.05);
+    const sideW = Math.min(W * 0.18, 220);
+    [[0, sideW, 0, 1], [W, W - sideW, 0, 1]].forEach(([x0, x1]) => {
+      const q = b.createLinearGradient(x0, 0, x1, 0);
+      q.addColorStop(0, dark ? "rgba(0,0,0,0.35)" : "rgba(30,40,70,0.04)"); q.addColorStop(1, "rgba(0,0,0,0)");
+      b.fillStyle = q; b.fillRect(Math.min(x0, x1), 0, sideW, hitY);
+    });
+    // notes fade in at the top of the stage instead of popping in at the edge
+    const fadeH = Math.min(110, hitY * 0.16), fade = c.createLinearGradient(0, 0, 0, fadeH);
+    fade.addColorStop(0, dark ? "rgba(2,3,8,1)" : "rgba(251,250,247,1)"); fade.addColorStop(1, dark ? "rgba(2,3,8,0)" : "rgba(251,250,247,0)");
+    fx.fade = fade; fx.fadeH = fadeH;
+    // bloom canvases: the notes and beams are drawn small, then stretched back over the stage, which blurs them for free
+    const mk = (s) => { const q = document.createElement("canvas"); q.width = Math.max(1, Math.ceil(W / s)); q.height = Math.max(1, Math.ceil(hitY / s)); return q; };
+    fx.glowA = mk(4); fx.glowB = mk(12);
     const g = {};
     const ng = (stops) => { const q = c.createLinearGradient(0, 0, 0, 100); stops.forEach((s) => q.addColorStop(s[0], s[1])); return q; };
     g.R = ng([[0, HANDS.R.top], [1, HANDS.R.bot]]);
@@ -553,8 +577,23 @@
     }
     c.textAlign = "left";
 
+    // bloom, part 2: last frame's glow, stretched back up under the notes (a soft core and a wide halo)
+    if (dark && fx.glowReady && fx.glowA) {
+      const A = fx.glowA, B = fx.glowB;
+      c.save();
+      c.globalCompositeOperation = "lighter"; c.imageSmoothingEnabled = true;
+      c.globalAlpha = 0.5; c.drawImage(A, 0, 0, A.width * 4, A.height * 4);
+      c.globalAlpha = 0.85; c.drawImage(B, 0, 0, B.width * 12, B.height * 12);
+      c.restore();
+    }
+
     // notes
-    fx.lit.fill(null); fx.wait.fill(0);
+    fx.lit.fill(null); fx.wait.fill(0); fx.held.fill(0); fx.glN = 0;
+    const glowOn = dark;
+    const pushGlow = (x, y, w, h, colr, a) => {
+      let r = fx.gl[fx.glN]; if (!r) r = fx.gl[fx.glN] = [0, 0, 0, 0, "", 0];
+      r[0] = x; r[1] = y; r[2] = w; r[3] = h; r[4] = colr; r[5] = a; fx.glN++;
+    };
     if (g.waiting && g.waitChord) {
       const wn = g.waitChord.notes;
       for (let i = 0; i < wn.length; i++) if (wn[i].status === "pending") fx.wait[wn[i].midi] = wn[i].hand === "R" ? 1 : 2;
@@ -578,6 +617,7 @@
       if (end < beat) continue;
       const playing = n.start <= beat + 1e-6 && beat < end;
       if (playing) { fx.lit[n.midi] = hnd; fx.litFade[n.midi] = scored ? 0 : 1; }
+      if (playing && (n.status === "hit" || !scored)) fx.held[n.midi] = hnd.idx + 1;
       const yb = Math.min(hitY, hitY - (n.start - beat) * ppb) - 1.5;
       const yt = Math.max(-6, hitY - (end - beat) * ppb);
       const pad = k.black ? 0.5 : Math.min(2.5, k.w * 0.09);
@@ -589,9 +629,9 @@
       // glow strengthens as the note nears the hit line (dark) / soft drop shadow (light)
       if (scored && !missed && !hit) {
         if (dark) {
+          // every note glows a little; the glow builds as it nears the hit line (drawn later in one bloom pass)
           const dist = hitY - yb, prox = playing ? 1 : dist <= 0 ? 1 : Math.max(0, 1 - dist / (ppb * bpb));
-          if (reduce) { c.shadowColor = hnd.glow; c.shadowBlur = 6; }
-          else if (prox > 0.02) { c.shadowColor = hnd.glow; c.shadowBlur = 4 + 20 * prox; }
+          pushGlow(x, y0, w, h, hnd.flat, 0.28 + 0.72 * prox);
         } else { c.shadowColor = "rgba(25,35,70,0.28)"; c.shadowBlur = 6; c.shadowOffsetY = 2; }
       } else if (!dark && scored) { c.shadowColor = "rgba(25,35,70,0.18)"; c.shadowBlur = 4; c.shadowOffsetY = 1.5; }
       rr(c, x, y0, w, h, r);
@@ -603,6 +643,8 @@
       rr(c, x + 0.5, y0 + 0.5, w - 1, h - 1, Math.max(0, r - 0.5));
       c.strokeStyle = "rgba(255,255,255,0.36)"; c.lineWidth = 1; c.stroke();
       if (w >= 12 && h >= 12) { c.fillStyle = "rgba(255,255,255,0.17)"; rr(c, x + 2, y0 + 3, Math.max(2, w * 0.16), h - 6, 2); c.fill(); }
+      // bright cap along the top edge, like light catching the end of a glass bar
+      if (w >= 8 && h >= 10) { c.fillStyle = "rgba(255,255,255,0.42)"; rr(c, x + Math.min(r, 3), y0 + 1.2, w - Math.min(r, 3) * 2, 1.6, 0.8); c.fill(); }
       if (missed && scored) { c.strokeStyle = hnd.flat; c.setLineDash([3, 3]); c.lineWidth = 1.5; rr(c, x, y0, w, h, r); c.stroke(); c.setLineDash([]); }
       // note name in a small rounded label near the bottom of the bar
       if (labelsOn && h >= 18 && w >= 8 && w < 17) {
@@ -624,8 +666,47 @@
       c.globalAlpha = 1;
     }
 
-    // light beams and a bloom above keys that were just played right
+    // notes fade in at the top
+    if (fx.fade) { c.fillStyle = fx.fade; c.fillRect(0, 0, W, fx.fadeH); }
+
     const comp = c.globalCompositeOperation;
+    // held notes: a steady light beam above the key and a bright "saber" line where the note meets it
+    {
+      if (dark) c.globalCompositeOperation = "lighter";
+      const beamH = Math.min(150, hitY * 0.45);
+      for (let m = geo.a; m <= geo.b; m++) {
+        const hv = fx.held[m]; if (!hv) continue;
+        const k = keys[m]; if (!k) continue;
+        const hd = HAND_BY_IDX[hv - 1], f = reduce ? 1 : 0.86 + 0.14 * Math.sin(now / 70 + m * 1.7);
+        c.globalAlpha = (dark ? 0.34 : 0.3) * f; c.fillStyle = hv === 1 ? G.beamR : G.beamL;
+        c.fillRect(k.x + 1, hitY - beamH, k.w - 2, beamH);
+        c.globalAlpha = dark ? 0.95 : 0.8; c.fillStyle = dark ? "#ffffff" : hd.deep;
+        rr(c, k.x + 1.5, hitY - 4, k.w - 3, 3, 1.5); c.fill();
+        if (glowOn) {
+          pushGlow(k.x + k.w * 0.25, hitY - beamH * 0.6, k.w * 0.5, beamH * 0.6, hd.flat, 0.3 * f);
+          pushGlow(k.x - k.w * 0.4, hitY - 8, k.w * 1.8, 8, hd.flat, 0.8);
+        }
+      }
+      c.globalAlpha = 1; c.globalCompositeOperation = comp;
+    }
+
+    // bloom, part 1: draw this frame's glow list small into the two offscreen canvases.
+    // They are laid under the notes at the start of the NEXT frame, so the glow sits behind the bars and keeps their colour clean.
+    if (glowOn && fx.glowA) {
+      const A = fx.glowA, B = fx.glowB, a2 = A.getContext("2d"), b2 = B.getContext("2d");
+      a2.setTransform(1, 0, 0, 1, 0, 0); a2.globalAlpha = 1; a2.clearRect(0, 0, A.width, A.height);
+      a2.setTransform(0.25, 0, 0, 0.25, 0, 0);
+      for (let i = 0; i < fx.glN; i++) {
+        const r = fx.gl[i];
+        a2.globalAlpha = r[5]; a2.fillStyle = r[4]; a2.fillRect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2);
+      }
+      a2.globalAlpha = 1;
+      b2.clearRect(0, 0, B.width, B.height); b2.imageSmoothingEnabled = true;
+      b2.drawImage(A, 0, 0, B.width, B.height);
+      fx.glowReady = fx.glN > 0;
+    }
+
+    // light beams, a bloom and a ripple above keys that were just played right
     if (!reduce) {
       if (dark) c.globalCompositeOperation = "lighter";
       const list = geo.whites;
@@ -644,6 +725,10 @@
           bloom.addColorStop(0, "rgba(" + hd.beam + ",0.75)"); bloom.addColorStop(1, "rgba(" + hd.beam + ",0)");
           c.globalAlpha = (dark ? 0.85 : 0.5) * a; c.fillStyle = bloom;
           c.fillRect(cx - rad, hitY - rad, rad * 2, rad);
+          // ripple spreading out along the hit line
+          const rx = k.w * 0.6 + (1 - a) * Math.max(30, kw * 2.4);
+          c.globalAlpha = (dark ? 0.8 : 0.55) * a * a; c.strokeStyle = "rgba(" + hd.beam + ",1)"; c.lineWidth = 1 + 1.5 * a;
+          c.beginPath(); c.ellipse(cx, hitY - 1, rx, rx * 0.2, 0, Math.PI, Math.PI * 2); c.stroke();
         }
       }
       c.globalAlpha = 1; c.globalCompositeOperation = comp;
@@ -737,10 +822,16 @@
         const life = 1 - age / SPARK_LIFE;
         c.globalAlpha = life; c.fillStyle = dark ? (fx.sH[i] ? "#ffe6bf" : "#d3e0ff") : (fx.sH[i] ? "#c96a0a" : "#2762e0");
         const z = fx.sz[i] * (0.5 + 0.5 * life);
-        c.shadowColor = fx.sH[i] ? HANDS.L.glow : HANDS.R.glow; c.shadowBlur = dark ? 6 : 0;
         c.beginPath(); c.arc(x, y, z, 0, 6.2832); c.fill();
+        if (dark) {
+          // soft halo (cheaper than a canvas shadow on every spark)
+          const hc = c.globalCompositeOperation; c.globalCompositeOperation = "lighter";
+          c.globalAlpha = life * 0.22; c.fillStyle = fx.sH[i] ? HANDS.L.flat : HANDS.R.flat;
+          c.beginPath(); c.arc(x, y, z * 3.2, 0, 6.2832); c.fill();
+          c.globalCompositeOperation = hc;
+        }
       }
-      c.shadowBlur = 0; c.globalAlpha = 1;
+      c.globalAlpha = 1;
     }
   }
 
