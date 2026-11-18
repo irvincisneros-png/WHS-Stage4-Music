@@ -41,8 +41,14 @@
         model: { bpb: m.b, bpm: m.p, totalBeats: m.t, sig: m.s || null, tempo: m.tm || null, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R", ring: e[4] || 0 })) },
       });
     });
+    // dev scale test: ?testmany=1 lists every song ten times (suffixed keys and names) to check a 200+ song library
+    if (TEST_MANY) {
+      const n = out.length;
+      for (let r = 1; r < 10; r++) for (let i = 0; i < n; i++) out.push({ ...out[i], key: out[i].key + "~" + r, name: out[i].name + " " + (r + 1) });
+    }
     return out;
   }
+  const TEST_MANY = /[?&]testmany=1(&|$)/.test(window.location.search);
   const modelOf = (meta) => meta.model || FC.songToEvents(meta.song);
 
   /* ------------------------------------------------------------ storage */
@@ -61,6 +67,10 @@
     const b = readBest(), k = songKey + "|" + hands + "|" + (wait ? "wait" : "free");
     if (!b[k] || pct > b[k].pct) { b[k] = { pct, stars: FC.starsFor(pct) }; window.Students.writeNS("fallingNotes.best", b); }
   }
+  /* library: favourites (hearts) and recently played, both as lists of song keys */
+  const readKeys = (ns) => { const v = window.Students && window.Students.readNS(ns, []); return Array.isArray(v) ? v : []; };
+  const writeKeys = (ns, v) => { if (window.Students) window.Students.writeNS(ns, v); };
+  const pushRecent = (key) => writeKeys("fallingNotes.recent", [key].concat(readKeys("fallingNotes.recent").filter((k) => k !== key)).slice(0, 12));
   const readSettings = () => (window.Students && window.Students.readNS("fallingNotes.settings", {})) || {};
   const saveSettings = (patch) => { if (window.Students) window.Students.writeNS("fallingNotes.settings", Object.assign({}, readSettings(), patch)); };
 
@@ -2016,6 +2026,191 @@
     return raw;
   }
 
+  /* ------------------------------------------------------------ song library: shelves, cards, "See all" pages */
+  const LEVELS = ["Easy", "Medium", "Hard"];
+  /* The rows under "Your songs" and "Start here". One row per entry, in this order; a song goes on the
+     row whose tags list has its tag. To add a category, add a line here. Songs with a tag nobody lists
+     fall into "More songs", so nothing is ever hidden. */
+  const SHELF_DEFS = [
+    { id: "class", title: "Class pieces & warm-ups", tags: ["Y7 PIANO", "Y7 PIANO+", "WARM-UP"] },
+    { id: "classical", title: "Classical", tags: ["CLASSICAL", "BAROQUE", "ROMANTIC", "REPERTOIRE"] },
+    { id: "film", title: "Film & TV", tags: ["FILM", "TV"] },
+    { id: "pop", title: "Pop", tags: ["POP"] },
+    { id: "seasonal", title: "Seasonal", tags: ["SEASONAL"] },
+    { id: "folk", title: "Traditional & folk", tags: ["ROUND", "FOLK", "HYMN", "JAZZ", "TRADITIONAL"] },
+  ];
+  const RAIL_MAX = 20;   // cards on a row before the "See all" tile
+  const byLevelName = (a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name, undefined, { numeric: true });
+  const tagOf = (s) => String(s.tag || "").toUpperCase();
+  function buildShelves(songs, favs, recent) {
+    const byKey = {}; songs.forEach((s) => { byKey[s.key] = s; });
+    const out = [], yours = [];
+    favs.concat(recent).forEach((k) => { if (byKey[k] && yours.indexOf(byKey[k]) < 0) yours.push(byKey[k]); });
+    if (yours.length) out.push({ id: "yours", title: "Your songs", songs: yours });
+    const easy = songs.filter((s) => s.level === "Easy").sort(byLevelName);
+    if (easy.length) out.push({ id: "start", title: "Start here", songs: easy });
+    const taken = {};
+    SHELF_DEFS.forEach((d) => d.tags.forEach((t) => { taken[t] = 1; }));
+    SHELF_DEFS.concat([{ id: "more", title: "More songs", tags: null }]).forEach((d) => {
+      const list = songs.filter((s) => (d.tags ? d.tags.indexOf(tagOf(s)) >= 0 : !taken[tagOf(s)])).sort(byLevelName);
+      if (list.length) out.push({ id: d.id, title: d.title, songs: list });
+    });
+    return out;
+  }
+  const SORTS = [["level", "Level"], ["az", "A to Z"], ["length", "Length"]];
+  function sortSongs(list, how) {
+    const l = list.slice();
+    if (how === "az") return l.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (how === "length") return l.sort((a, b) => thumbPaths(a).secs - thumbPaths(b).secs || byLevelName(a, b));
+    return l.sort(byLevelName);
+  }
+
+  const HeartIcon = ({ on }) => (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <path d="M12 20.4S3.6 15.2 3.6 9.1A4.6 4.6 0 0 1 12 6.6a4.6 4.6 0 0 1 8.4 2.5c0 6.1-8.4 11.3-8.4 11.3z" />
+    </svg>
+  );
+  /* the heart is a sibling of the card button (a button cannot sit inside a button) and floats over its art */
+  function Heart({ name, on, onToggle }) {
+    const [pop, setPop] = React.useState(false);
+    return (
+      <button type="button" className={"fn-heart" + (on ? " on" : "") + (pop ? " pop" : "")} aria-pressed={!!on} aria-label={"Add " + name + " to favourites"}
+        onClick={() => { setPop(true); onToggle(); }} onAnimationEnd={() => setPop(false)}>
+        <HeartIcon on={on} />
+      </button>
+    );
+  }
+  function SongCard({ s, fav, openSong, toggleFav }) {
+    const stars = bestStars(s.key), t = thumbPaths(s), lv = Math.max(0, LEVELS.indexOf(s.level)) + 1;
+    return (
+      <li className="fn-song">
+        <button type="button" className="fn-card" onClick={() => openSong(s)}>
+          <span className="fn-card-art">
+            <Thumb meta={s} />
+            <span className="fn-card-play" aria-hidden="true"><Icon n="play" size={20} /></span>
+            <span className="fn-card-time">{fmtTime(t.secs)}</span>
+          </span>
+          <span className="fn-card-body">
+            <span className="fn-card-name">{s.name}</span>
+            <span className="fn-card-by">{byline(s)}</span>
+            <span className="fn-card-meta">
+              <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
+              <span className={"fn-dots " + s.level.toLowerCase()} aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= lv ? "on" : ""} />)}</span>
+              <span className="fn-sig">{t.sig}</span>
+              {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
+            </span>
+          </span>
+        </button>
+        <Heart name={s.name} on={fav} onToggle={() => toggleFav(s.key)} />
+      </li>
+    );
+  }
+
+  /* one horizontal row: swipe or scroll it, or use the arrows with a mouse */
+  function Shelf({ sh, favSet, openSong, toggleFav, onAll }) {
+    const rail = React.useRef(null);
+    const [edge, setEdge] = React.useState({ l: false, r: false });
+    const list = sh.songs.slice(0, RAIL_MAX), more = sh.songs.length > RAIL_MAX;
+    React.useEffect(() => {
+      const el = rail.current; if (!el) return;
+      let raf = 0;
+      const upd = () => {
+        raf = 0;
+        const l = el.scrollLeft > 4, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+        setEdge((e) => (e.l === l && e.r === r ? e : { l, r }));
+      };
+      const sched = () => { if (!raf) raf = requestAnimationFrame(upd); };
+      upd();
+      el.addEventListener("scroll", sched, { passive: true });
+      const ro = window.ResizeObserver ? new ResizeObserver(sched) : null;
+      if (ro) ro.observe(el); else window.addEventListener("resize", sched);
+      return () => { el.removeEventListener("scroll", sched); if (ro) ro.disconnect(); else window.removeEventListener("resize", sched); if (raf) cancelAnimationFrame(raf); };
+    }, [list.length]);
+    const go = (d) => {
+      const el = rail.current; if (!el) return;
+      el.scrollBy({ left: d * Math.max(180, el.clientWidth * 0.85), behavior: mq("(prefers-reduced-motion: reduce)") ? "auto" : "smooth" });
+    };
+    const id = "fn-shelf-" + sh.id;
+    return (
+      <section className="fn-shelf" aria-labelledby={id}>
+        <div className="fn-shelf-head">
+          <h3 id={id}>{sh.title}<span className="fn-shelf-count">{sh.songs.length}</span></h3>
+          <div className="fn-shelf-ctl">
+            <button type="button" className="fn-seeall" data-shelf={sh.id} onClick={() => onAll(sh.id)} aria-label={"See all " + sh.title + " songs"}>See all</button>
+            <span className="fn-arrows" hidden={!edge.l && !edge.r}>
+              <button type="button" className="fn-arrow" onClick={() => go(-1)} disabled={!edge.l} aria-label={"Scroll " + sh.title + " back"}><Icon n="chevL" size={18} /></button>
+              <button type="button" className="fn-arrow" onClick={() => go(1)} disabled={!edge.r} aria-label={"Scroll " + sh.title + " forward"}><Icon n="chevR" size={18} /></button>
+            </span>
+          </div>
+        </div>
+        <ul className={"fn-rail" + (edge.l ? " fade-l" : "") + (edge.r ? " fade-r" : "")} ref={rail}>
+          {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+          {more ? (
+            <li className="fn-song fn-song-more">
+              <button type="button" className="fn-morecard" onClick={() => onAll(sh.id)}>
+                <span className="fn-more-n">+{sh.songs.length - RAIL_MAX}</span>
+                <span>more in {sh.title}</span>
+                <span className="fn-more-go">See all <Icon n="chevR" size={16} /></span>
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+    );
+  }
+
+  function LibraryBody({ shelves, page, shown, searching, query, favs, openSong, toggleFav, setView, clearSearch }) {
+    const [sort, setSort] = React.useState("level");
+    const root = React.useRef(null), back = React.useRef(null), saved = React.useRef(0), from = React.useRef(null);
+    const favSet = React.useMemo(() => { const o = {}; favs.forEach((k) => { o[k] = true; }); return o; }, [favs]);
+    const list = React.useMemo(() => sortSongs(shown, sort), [shown, sort]);
+    const scroller = () => root.current && root.current.closest(".fn-lib-scroll");
+    const openAll = (id) => { const sc = scroller(); saved.current = sc ? sc.scrollTop : 0; from.current = id; setView(id); };
+    const pid = page ? page.id : null;
+    React.useEffect(() => {   // a new page starts at the top on its back button; coming back restores the row's place
+      const sc = scroller();
+      if (pid) { if (sc) sc.scrollTop = 0; if (back.current) back.current.focus({ preventScroll: true }); }
+      else if (from.current) {
+        if (sc) sc.scrollTop = saved.current;
+        const b = root.current && root.current.querySelector('[data-shelf="' + from.current + '"]');
+        if (b) b.focus({ preventScroll: true });
+        from.current = null;
+      }
+    }, [pid]);
+
+    let body;
+    if (!page && !searching) {
+      body = shelves.map((sh) => <Shelf key={sh.id} sh={sh} favSet={favSet} openSong={openSong} toggleFav={toggleFav} onAll={openAll} />);
+    } else {
+      body = (
+        <section className="fn-page" aria-labelledby="fn-page-title">
+          <div className="fn-page-head">
+            {page ? <button type="button" className="fn-pageback" ref={back} onClick={() => setView(null)} aria-label="Back to all songs"><Icon n="chevL" size={20} /></button> : null}
+            <h3 id="fn-page-title">{page ? page.title : "Results"}<span className="fn-shelf-count">{list.length}</span></h3>
+            <label className="fn-sort"><span>Sort</span>
+              <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                {SORTS.map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
+              </select>
+            </label>
+          </div>
+          {list.length ? (
+            <ul className="fn-songs">
+              {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+            </ul>
+          ) : (
+            <div className="fn-empty" role="status">
+              <span className="fn-empty-icon" aria-hidden="true"><Icon n="search" size={26} /></span>
+              <strong>{query.trim() ? "No songs match “" + query.trim() + "”" : "No songs at that level"}</strong>
+              <p>Try another word or a different level. Can't find the song you want? Ask your teacher to add it.</p>
+              {searching ? <button type="button" className="fn-cta" onClick={clearSearch}>Clear search</button> : null}
+            </div>
+          )}
+        </section>
+      );
+    }
+    return <div className="fn-libbody" ref={root}>{body}</div>;
+  }
+
   /* ------------------------------------------------------------ app shell: song library + player */
   const Logo = ({ size = 34 }) => (
     <svg className="fn-logo" width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
@@ -2083,6 +2278,8 @@
     const [stage, setStageState] = React.useState(() => (readSettings().stage === "light" ? "light" : "dark"));
     const [immersive, setImmersive] = React.useState(false);
     const [, bump] = React.useState(0);
+    const [view, setView] = React.useState(null);   // a shelf's "See all" page: its id, or null for the shelves
+    const [favs, setFavs] = React.useState(() => readKeys("fallingNotes.favs"));
     const fileRef = React.useRef(null), appRef = React.useRef(null);
     const songs = React.useMemo(songList, []);
     const canFs = React.useMemo(FS_OK, []);
@@ -2165,7 +2362,7 @@
     }
 
     function openSong(s) {
-      if (s.key !== "custom" && window.Students) window.Students.writeNS("fallingNotes.last", s.key);
+      if (s.key !== "custom" && window.Students) { window.Students.writeNS("fallingNotes.last", s.key); pushRecent(s.key); }
       setMeta(s);
     }
     function openFile(file) {
@@ -2189,12 +2386,20 @@
       else { const r = new FileReader(); r.onload = () => done(r.result); r.onerror = () => setMsg("Sorry, I could not read that file."); r.readAsArrayBuffer(file); }
     }
 
-    const LEVELS = ["Easy", "Medium", "Hard"];
-    const count = (l) => songs.filter((s) => s.level === l).length;
+    const recentSig = readKeys("fallingNotes.recent").join("|");
+    const shelves = React.useMemo(() => buildShelves(songs, favs, readKeys("fallingNotes.recent")), [songs, favs, recentSig]);
+    const page = view ? shelves.find((x) => x.id === view) || null : null;      // the open "See all" page
+    const pool = page ? page.songs : songs;
+    const count = (l) => pool.filter((s) => s.level === l).length;
     const q = query.trim().toLowerCase();
-    const shown = songs
-      .filter((s) => (filter === "All" || s.level === filter) && (!q || (s.name + " " + byline(s)).toLowerCase().indexOf(q) >= 0))
-      .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
+    const searching = !!q || filter !== "All";
+    const shown = pool
+      .filter((s) => (filter === "All" || s.level === filter) && (!q || (s.name + " " + byline(s)).toLowerCase().indexOf(q) >= 0));
+    const toggleFav = (key) => {
+      const cur = readKeys("fallingNotes.favs"), next = cur.indexOf(key) >= 0 ? cur.filter((k) => k !== key) : [key].concat(cur);
+      writeKeys("fallingNotes.favs", next); setFavs(next);
+    };
+    const clearSearch = () => { setQuery(""); setFilter("All"); };
     const starTotal = songs.reduce((t, s) => t + bestStars(s.key), 0);
     const lastKey = window.Students ? window.Students.readNS("fallingNotes.last", null) : null;
     const last = lastKey ? songs.find((s) => s.key === lastKey) : null;
@@ -2235,10 +2440,10 @@
                   <button type="button" className="fn-cta" onClick={applyUpdate}>Update now</button>
                 </div>
               ) : null}
-              <section className="fn-hero">
+              {page ? null : <section className="fn-hero">
                 <div className="fn-hero-text">
                   <h2>What will you play today?</h2>
-                  <p>Pick a song and play along on a real piano while the mic listens, or tap the keys on the screen. You can hear any song first.</p>
+                  <p>Play along on a real piano while the mic listens, or tap the keys on screen. You can hear any song first.</p>
                 </div>
                 {last ? (
                   <button type="button" className="fn-resume" onClick={() => openSong(last)}>
@@ -2247,7 +2452,7 @@
                     <span className="fn-resume-go" aria-hidden="true"><Icon n="play" size={18} /></span>
                   </button>
                 ) : null}
-              </section>
+              </section>}
 
               <div className="fn-listbar">
                 <label className="fn-search">
@@ -2258,7 +2463,7 @@
                 <div className="fn-filters" role="group" aria-label="Filter songs by level">
                   {["All"].concat(LEVELS).map((l) => (
                     <button key={l} type="button" aria-pressed={filter === l} onClick={() => setFilter(l)}>
-                      {l} <span>{l === "All" ? songs.length : count(l)}</span>
+                      {l} <span>{l === "All" ? pool.length : count(l)}</span>
                     </button>
                   ))}
                 </div>
@@ -2272,35 +2477,8 @@
               </div>
               {msg ? <p className="fn-error" role="alert">{msg}</p> : null}
 
-              {shown.length ? (
-                <ul className="fn-songs">
-                  {shown.map((s) => {
-                    const stars = bestStars(s.key), t = thumbPaths(s);
-                    return (
-                      <li key={s.key}>
-                        <button type="button" className="fn-card" onClick={() => openSong(s)}>
-                          <span className="fn-card-art">
-                            <Thumb meta={s} />
-                            <span className="fn-card-play" aria-hidden="true"><Icon n="play" size={20} /></span>
-                            <span className="fn-card-time">{fmtTime(t.secs)}</span>
-                          </span>
-                          <span className="fn-card-body">
-                            <span className="fn-card-name">{s.name}</span>
-                            <span className="fn-card-by">{byline(s)}</span>
-                            <span className="fn-card-meta">
-                              <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
-                              <span className="fn-sig">{t.sig}</span>
-                              {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="fn-empty">No songs match. Try a different word or level.</p>
-              )}
+              <LibraryBody shelves={shelves} page={page} shown={shown} searching={searching} query={query} favs={favs}
+                openSong={openSong} toggleFav={toggleFav} setView={setView} clearSearch={clearSearch} />
             </div>
           </div>
         )}
