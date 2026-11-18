@@ -3038,6 +3038,14 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
 .fn-morecard:hover { border-color: var(--terracotta); color: var(--ink); background: var(--fn-ctl); }
 .fn-more-n { font: 800 2rem/1 var(--font-display); color: var(--ink); letter-spacing: -.02em; }
 .fn-more-go { display: inline-flex; align-items: center; gap: 2px; margin-top: 6px; color: var(--terracotta); font-weight: 700; }
+.fn-remove { position: absolute; top: 8px; left: 8px; z-index: 2; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  color: #fff; background: rgba(4,6,14,.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: .85; transition: opacity .15s, background .15s, transform .15s; }
+.fn-remove::after { content: ""; position: absolute; inset: -6px; }
+.fn-remove:hover, .fn-remove:focus-visible { opacity: 1; background: #c2334b; transform: scale(1.06); }
+.fn-addcard { border-style: dashed; gap: 8px; }
+.fn-add-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; background: var(--fn-ctl); color: var(--terracotta); }
+.fn-addcard strong { color: var(--ink); font-size: 1rem; }
+.fn-add-note { max-width: 18ch; font-size: .78rem; line-height: 1.35; opacity: .8; }
 
 /* "See all" page and search results */
 .fn-page-head { display: flex; align-items: center; gap: 12px; margin: 16px 0 16px; flex-wrap: wrap; }
