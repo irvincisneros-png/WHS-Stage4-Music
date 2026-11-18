@@ -41,8 +41,14 @@
         model: { bpb: m.b, bpm: m.p, totalBeats: m.t, sig: m.s || null, tempo: m.tm || null, events: m.e.map((e) => ({ midi: e[0], start: e[1], dur: e[2], hand: e[3] ? "L" : "R", ring: e[4] || 0 })) },
       });
     });
+    // dev scale test: ?testmany=1 lists every song ten times (suffixed keys and names) to check a 200+ song library
+    if (TEST_MANY) {
+      const n = out.length;
+      for (let r = 1; r < 10; r++) for (let i = 0; i < n; i++) out.push({ ...out[i], key: out[i].key + "~" + r, name: out[i].name + " " + (r + 1) });
+    }
     return out;
   }
+  const TEST_MANY = /[?&]testmany=1(&|$)/.test(window.location.search);
   const modelOf = (meta) => meta.model || FC.songToEvents(meta.song);
 
   /* ------------------------------------------------------------ storage */
@@ -61,6 +67,10 @@
     const b = readBest(), k = songKey + "|" + hands + "|" + (wait ? "wait" : "free");
     if (!b[k] || pct > b[k].pct) { b[k] = { pct, stars: FC.starsFor(pct) }; window.Students.writeNS("fallingNotes.best", b); }
   }
+  /* library: favourites (hearts) and recently played, both as lists of song keys */
+  const readKeys = (ns) => { const v = window.Students && window.Students.readNS(ns, []); return Array.isArray(v) ? v : []; };
+  const writeKeys = (ns, v) => { if (window.Students) window.Students.writeNS(ns, v); };
+  const pushRecent = (key) => writeKeys("fallingNotes.recent", [key].concat(readKeys("fallingNotes.recent").filter((k) => k !== key)).slice(0, 12));
   const readSettings = () => (window.Students && window.Students.readNS("fallingNotes.settings", {})) || {};
   const saveSettings = (patch) => { if (window.Students) window.Students.writeNS("fallingNotes.settings", Object.assign({}, readSettings(), patch)); };
 
@@ -429,6 +439,9 @@
       lit: new Array(128).fill(null), litFade: new Uint8Array(128), wait: new Uint8Array(128),
       sx: new Float32Array(SPARKS), sy: new Float32Array(SPARKS), svx: new Float32Array(SPARKS), svy: new Float32Array(SPARKS),
       sz: new Float32Array(SPARKS), sT: new Float64Array(SPARKS), sH: new Uint8Array(SPARKS), sNext: 0, lastNow: 0,
+      held: new Uint8Array(128),            // 1 = right hand, 2 = left hand: a note is sounding and was played (or the app is playing it)
+      gl: [], glN: 0,                        // glow rects for this frame: [x, y, w, h, colour, alpha]
+      glowA: null, glowB: null,              // small offscreen canvases for the bloom (1/4 and 1/12 size)
     };
   }
 
@@ -481,6 +494,27 @@
       top.addColorStop(0, "rgba(0,0,0,0.5)"); top.addColorStop(1, "rgba(0,0,0,0)");
       b.fillStyle = top; b.fillRect(0, 0, W, topH);
     }
+    // two faint pools of hand colour low on the stage (left hand side orange, right hand side blue) and soft dark sides
+    const pool = (cx, rgb, a) => {
+      const rad = Math.max(W, hitY) * 0.62, q = b.createRadialGradient(cx, hitY, 0, cx, hitY, rad);
+      q.addColorStop(0, "rgba(" + rgb + "," + a + ")"); q.addColorStop(1, "rgba(" + rgb + ",0)");
+      b.fillStyle = q; b.fillRect(0, 0, W, hitY);
+    };
+    pool(W * 0.22, HANDS.L.beam, dark ? 0.07 : 0.05);
+    pool(W * 0.78, HANDS.R.beam, dark ? 0.08 : 0.05);
+    const sideW = Math.min(W * 0.18, 220);
+    [[0, sideW, 0, 1], [W, W - sideW, 0, 1]].forEach(([x0, x1]) => {
+      const q = b.createLinearGradient(x0, 0, x1, 0);
+      q.addColorStop(0, dark ? "rgba(0,0,0,0.35)" : "rgba(30,40,70,0.04)"); q.addColorStop(1, "rgba(0,0,0,0)");
+      b.fillStyle = q; b.fillRect(Math.min(x0, x1), 0, sideW, hitY);
+    });
+    // notes fade in at the top of the stage instead of popping in at the edge
+    const fadeH = Math.min(110, hitY * 0.16), fade = c.createLinearGradient(0, 0, 0, fadeH);
+    fade.addColorStop(0, dark ? "rgba(2,3,8,1)" : "rgba(251,250,247,1)"); fade.addColorStop(1, dark ? "rgba(2,3,8,0)" : "rgba(251,250,247,0)");
+    fx.fade = fade; fx.fadeH = fadeH;
+    // bloom canvases: the notes and beams are drawn small, then stretched back over the stage, which blurs them for free
+    const mk = (s) => { const q = document.createElement("canvas"); q.width = Math.max(1, Math.ceil(W / s)); q.height = Math.max(1, Math.ceil(hitY / s)); return q; };
+    fx.glowA = mk(4); fx.glowB = mk(12);
     const g = {};
     const ng = (stops) => { const q = c.createLinearGradient(0, 0, 0, 100); stops.forEach((s) => q.addColorStop(s[0], s[1])); return q; };
     g.R = ng([[0, HANDS.R.top], [1, HANDS.R.bot]]);
@@ -543,8 +577,23 @@
     }
     c.textAlign = "left";
 
+    // bloom, part 2: last frame's glow, stretched back up under the notes (a soft core and a wide halo)
+    if (dark && fx.glowReady && fx.glowA) {
+      const A = fx.glowA, B = fx.glowB;
+      c.save();
+      c.globalCompositeOperation = "lighter"; c.imageSmoothingEnabled = true;
+      c.globalAlpha = 0.5; c.drawImage(A, 0, 0, A.width * 4, A.height * 4);
+      c.globalAlpha = 0.85; c.drawImage(B, 0, 0, B.width * 12, B.height * 12);
+      c.restore();
+    }
+
     // notes
-    fx.lit.fill(null); fx.wait.fill(0);
+    fx.lit.fill(null); fx.wait.fill(0); fx.held.fill(0); fx.glN = 0;
+    const glowOn = dark;
+    const pushGlow = (x, y, w, h, colr, a) => {
+      let r = fx.gl[fx.glN]; if (!r) r = fx.gl[fx.glN] = [0, 0, 0, 0, "", 0];
+      r[0] = x; r[1] = y; r[2] = w; r[3] = h; r[4] = colr; r[5] = a; fx.glN++;
+    };
     if (g.waiting && g.waitChord) {
       const wn = g.waitChord.notes;
       for (let i = 0; i < wn.length; i++) if (wn[i].status === "pending") fx.wait[wn[i].midi] = wn[i].hand === "R" ? 1 : 2;
@@ -568,6 +617,7 @@
       if (end < beat) continue;
       const playing = n.start <= beat + 1e-6 && beat < end;
       if (playing) { fx.lit[n.midi] = hnd; fx.litFade[n.midi] = scored ? 0 : 1; }
+      if (playing && (n.status === "hit" || !scored)) fx.held[n.midi] = hnd.idx + 1;
       const yb = Math.min(hitY, hitY - (n.start - beat) * ppb) - 1.5;
       const yt = Math.max(-6, hitY - (end - beat) * ppb);
       const pad = k.black ? 0.5 : Math.min(2.5, k.w * 0.09);
@@ -579,9 +629,9 @@
       // glow strengthens as the note nears the hit line (dark) / soft drop shadow (light)
       if (scored && !missed && !hit) {
         if (dark) {
+          // every note glows a little; the glow builds as it nears the hit line (drawn later in one bloom pass)
           const dist = hitY - yb, prox = playing ? 1 : dist <= 0 ? 1 : Math.max(0, 1 - dist / (ppb * bpb));
-          if (reduce) { c.shadowColor = hnd.glow; c.shadowBlur = 6; }
-          else if (prox > 0.02) { c.shadowColor = hnd.glow; c.shadowBlur = 4 + 20 * prox; }
+          pushGlow(x, y0, w, h, hnd.flat, 0.28 + 0.72 * prox);
         } else { c.shadowColor = "rgba(25,35,70,0.28)"; c.shadowBlur = 6; c.shadowOffsetY = 2; }
       } else if (!dark && scored) { c.shadowColor = "rgba(25,35,70,0.18)"; c.shadowBlur = 4; c.shadowOffsetY = 1.5; }
       rr(c, x, y0, w, h, r);
@@ -593,6 +643,8 @@
       rr(c, x + 0.5, y0 + 0.5, w - 1, h - 1, Math.max(0, r - 0.5));
       c.strokeStyle = "rgba(255,255,255,0.36)"; c.lineWidth = 1; c.stroke();
       if (w >= 12 && h >= 12) { c.fillStyle = "rgba(255,255,255,0.17)"; rr(c, x + 2, y0 + 3, Math.max(2, w * 0.16), h - 6, 2); c.fill(); }
+      // bright cap along the top edge, like light catching the end of a glass bar
+      if (w >= 8 && h >= 10) { c.fillStyle = "rgba(255,255,255,0.42)"; rr(c, x + Math.min(r, 3), y0 + 1.2, w - Math.min(r, 3) * 2, 1.6, 0.8); c.fill(); }
       if (missed && scored) { c.strokeStyle = hnd.flat; c.setLineDash([3, 3]); c.lineWidth = 1.5; rr(c, x, y0, w, h, r); c.stroke(); c.setLineDash([]); }
       // note name in a small rounded label near the bottom of the bar
       if (labelsOn && h >= 18 && w >= 8 && w < 17) {
@@ -614,8 +666,47 @@
       c.globalAlpha = 1;
     }
 
-    // light beams and a bloom above keys that were just played right
+    // notes fade in at the top
+    if (fx.fade) { c.fillStyle = fx.fade; c.fillRect(0, 0, W, fx.fadeH); }
+
     const comp = c.globalCompositeOperation;
+    // held notes: a steady light beam above the key and a bright "saber" line where the note meets it
+    {
+      if (dark) c.globalCompositeOperation = "lighter";
+      const beamH = Math.min(150, hitY * 0.45);
+      for (let m = geo.a; m <= geo.b; m++) {
+        const hv = fx.held[m]; if (!hv) continue;
+        const k = keys[m]; if (!k) continue;
+        const hd = HAND_BY_IDX[hv - 1], f = reduce ? 1 : 0.86 + 0.14 * Math.sin(now / 70 + m * 1.7);
+        c.globalAlpha = (dark ? 0.34 : 0.3) * f; c.fillStyle = hv === 1 ? G.beamR : G.beamL;
+        c.fillRect(k.x + 1, hitY - beamH, k.w - 2, beamH);
+        c.globalAlpha = dark ? 0.95 : 0.8; c.fillStyle = dark ? "#ffffff" : hd.deep;
+        rr(c, k.x + 1.5, hitY - 4, k.w - 3, 3, 1.5); c.fill();
+        if (glowOn) {
+          pushGlow(k.x + k.w * 0.25, hitY - beamH * 0.6, k.w * 0.5, beamH * 0.6, hd.flat, 0.3 * f);
+          pushGlow(k.x - k.w * 0.4, hitY - 8, k.w * 1.8, 8, hd.flat, 0.8);
+        }
+      }
+      c.globalAlpha = 1; c.globalCompositeOperation = comp;
+    }
+
+    // bloom, part 1: draw this frame's glow list small into the two offscreen canvases.
+    // They are laid under the notes at the start of the NEXT frame, so the glow sits behind the bars and keeps their colour clean.
+    if (glowOn && fx.glowA) {
+      const A = fx.glowA, B = fx.glowB, a2 = A.getContext("2d"), b2 = B.getContext("2d");
+      a2.setTransform(1, 0, 0, 1, 0, 0); a2.globalAlpha = 1; a2.clearRect(0, 0, A.width, A.height);
+      a2.setTransform(0.25, 0, 0, 0.25, 0, 0);
+      for (let i = 0; i < fx.glN; i++) {
+        const r = fx.gl[i];
+        a2.globalAlpha = r[5]; a2.fillStyle = r[4]; a2.fillRect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2);
+      }
+      a2.globalAlpha = 1;
+      b2.clearRect(0, 0, B.width, B.height); b2.imageSmoothingEnabled = true;
+      b2.drawImage(A, 0, 0, B.width, B.height);
+      fx.glowReady = fx.glN > 0;
+    }
+
+    // light beams, a bloom and a ripple above keys that were just played right
     if (!reduce) {
       if (dark) c.globalCompositeOperation = "lighter";
       const list = geo.whites;
@@ -634,6 +725,10 @@
           bloom.addColorStop(0, "rgba(" + hd.beam + ",0.75)"); bloom.addColorStop(1, "rgba(" + hd.beam + ",0)");
           c.globalAlpha = (dark ? 0.85 : 0.5) * a; c.fillStyle = bloom;
           c.fillRect(cx - rad, hitY - rad, rad * 2, rad);
+          // ripple spreading out along the hit line
+          const rx = k.w * 0.6 + (1 - a) * Math.max(30, kw * 2.4);
+          c.globalAlpha = (dark ? 0.8 : 0.55) * a * a; c.strokeStyle = "rgba(" + hd.beam + ",1)"; c.lineWidth = 1 + 1.5 * a;
+          c.beginPath(); c.ellipse(cx, hitY - 1, rx, rx * 0.2, 0, Math.PI, Math.PI * 2); c.stroke();
         }
       }
       c.globalAlpha = 1; c.globalCompositeOperation = comp;
@@ -727,10 +822,16 @@
         const life = 1 - age / SPARK_LIFE;
         c.globalAlpha = life; c.fillStyle = dark ? (fx.sH[i] ? "#ffe6bf" : "#d3e0ff") : (fx.sH[i] ? "#c96a0a" : "#2762e0");
         const z = fx.sz[i] * (0.5 + 0.5 * life);
-        c.shadowColor = fx.sH[i] ? HANDS.L.glow : HANDS.R.glow; c.shadowBlur = dark ? 6 : 0;
         c.beginPath(); c.arc(x, y, z, 0, 6.2832); c.fill();
+        if (dark) {
+          // soft halo (cheaper than a canvas shadow on every spark)
+          const hc = c.globalCompositeOperation; c.globalCompositeOperation = "lighter";
+          c.globalAlpha = life * 0.22; c.fillStyle = fx.sH[i] ? HANDS.L.flat : HANDS.R.flat;
+          c.beginPath(); c.arc(x, y, z * 3.2, 0, 6.2832); c.fill();
+          c.globalCompositeOperation = hc;
+        }
       }
-      c.shadowBlur = 0; c.globalAlpha = 1;
+      c.globalAlpha = 1;
     }
   }
 
@@ -2016,6 +2117,191 @@
     return raw;
   }
 
+  /* ------------------------------------------------------------ song library: shelves, cards, "See all" pages */
+  const LEVELS = ["Easy", "Medium", "Hard"];
+  /* The rows under "Your songs" and "Start here". One row per entry, in this order; a song goes on the
+     row whose tags list has its tag. To add a category, add a line here. Songs with a tag nobody lists
+     fall into "More songs", so nothing is ever hidden. */
+  const SHELF_DEFS = [
+    { id: "class", title: "Class pieces & warm-ups", tags: ["Y7 PIANO", "Y7 PIANO+", "WARM-UP"] },
+    { id: "classical", title: "Classical", tags: ["CLASSICAL", "BAROQUE", "ROMANTIC", "REPERTOIRE"] },
+    { id: "film", title: "Film & TV", tags: ["FILM", "TV"] },
+    { id: "pop", title: "Pop", tags: ["POP"] },
+    { id: "seasonal", title: "Seasonal", tags: ["SEASONAL"] },
+    { id: "folk", title: "Traditional & folk", tags: ["ROUND", "FOLK", "HYMN", "JAZZ", "TRADITIONAL"] },
+  ];
+  const RAIL_MAX = 20;   // cards on a row before the "See all" tile
+  const byLevelName = (a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name, undefined, { numeric: true });
+  const tagOf = (s) => String(s.tag || "").toUpperCase();
+  function buildShelves(songs, favs, recent) {
+    const byKey = {}; songs.forEach((s) => { byKey[s.key] = s; });
+    const out = [], yours = [];
+    favs.concat(recent).forEach((k) => { if (byKey[k] && yours.indexOf(byKey[k]) < 0) yours.push(byKey[k]); });
+    if (yours.length) out.push({ id: "yours", title: "Your songs", songs: yours });
+    const easy = songs.filter((s) => s.level === "Easy").sort(byLevelName);
+    if (easy.length) out.push({ id: "start", title: "Start here", songs: easy });
+    const taken = {};
+    SHELF_DEFS.forEach((d) => d.tags.forEach((t) => { taken[t] = 1; }));
+    SHELF_DEFS.concat([{ id: "more", title: "More songs", tags: null }]).forEach((d) => {
+      const list = songs.filter((s) => (d.tags ? d.tags.indexOf(tagOf(s)) >= 0 : !taken[tagOf(s)])).sort(byLevelName);
+      if (list.length) out.push({ id: d.id, title: d.title, songs: list });
+    });
+    return out;
+  }
+  const SORTS = [["level", "Level"], ["az", "A to Z"], ["length", "Length"]];
+  function sortSongs(list, how) {
+    const l = list.slice();
+    if (how === "az") return l.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (how === "length") return l.sort((a, b) => thumbPaths(a).secs - thumbPaths(b).secs || byLevelName(a, b));
+    return l.sort(byLevelName);
+  }
+
+  const HeartIcon = ({ on }) => (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+      <path d="M12 20.4S3.6 15.2 3.6 9.1A4.6 4.6 0 0 1 12 6.6a4.6 4.6 0 0 1 8.4 2.5c0 6.1-8.4 11.3-8.4 11.3z" />
+    </svg>
+  );
+  /* the heart is a sibling of the card button (a button cannot sit inside a button) and floats over its art */
+  function Heart({ name, on, onToggle }) {
+    const [pop, setPop] = React.useState(false);
+    return (
+      <button type="button" className={"fn-heart" + (on ? " on" : "") + (pop ? " pop" : "")} aria-pressed={!!on} aria-label={"Add " + name + " to favourites"}
+        onClick={() => { setPop(true); onToggle(); }} onAnimationEnd={() => setPop(false)}>
+        <HeartIcon on={on} />
+      </button>
+    );
+  }
+  function SongCard({ s, fav, openSong, toggleFav }) {
+    const stars = bestStars(s.key), t = thumbPaths(s), lv = Math.max(0, LEVELS.indexOf(s.level)) + 1;
+    return (
+      <li className="fn-song">
+        <button type="button" className="fn-card" onClick={() => openSong(s)}>
+          <span className="fn-card-art">
+            <Thumb meta={s} />
+            <span className="fn-card-play" aria-hidden="true"><Icon n="play" size={20} /></span>
+            <span className="fn-card-time">{fmtTime(t.secs)}</span>
+          </span>
+          <span className="fn-card-body">
+            <span className="fn-card-name">{s.name}</span>
+            <span className="fn-card-by">{byline(s)}</span>
+            <span className="fn-card-meta">
+              <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
+              <span className={"fn-dots " + s.level.toLowerCase()} aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= lv ? "on" : ""} />)}</span>
+              <span className="fn-sig">{t.sig}</span>
+              {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
+            </span>
+          </span>
+        </button>
+        <Heart name={s.name} on={fav} onToggle={() => toggleFav(s.key)} />
+      </li>
+    );
+  }
+
+  /* one horizontal row: swipe or scroll it, or use the arrows with a mouse */
+  function Shelf({ sh, favSet, openSong, toggleFav, onAll }) {
+    const rail = React.useRef(null);
+    const [edge, setEdge] = React.useState({ l: false, r: false });
+    const list = sh.songs.slice(0, RAIL_MAX), more = sh.songs.length > RAIL_MAX;
+    React.useEffect(() => {
+      const el = rail.current; if (!el) return;
+      let raf = 0;
+      const upd = () => {
+        raf = 0;
+        const l = el.scrollLeft > 4, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+        setEdge((e) => (e.l === l && e.r === r ? e : { l, r }));
+      };
+      const sched = () => { if (!raf) raf = requestAnimationFrame(upd); };
+      upd();
+      el.addEventListener("scroll", sched, { passive: true });
+      const ro = window.ResizeObserver ? new ResizeObserver(sched) : null;
+      if (ro) ro.observe(el); else window.addEventListener("resize", sched);
+      return () => { el.removeEventListener("scroll", sched); if (ro) ro.disconnect(); else window.removeEventListener("resize", sched); if (raf) cancelAnimationFrame(raf); };
+    }, [list.length]);
+    const go = (d) => {
+      const el = rail.current; if (!el) return;
+      el.scrollBy({ left: d * Math.max(180, el.clientWidth * 0.85), behavior: mq("(prefers-reduced-motion: reduce)") ? "auto" : "smooth" });
+    };
+    const id = "fn-shelf-" + sh.id;
+    return (
+      <section className="fn-shelf" aria-labelledby={id}>
+        <div className="fn-shelf-head">
+          <h3 id={id}>{sh.title}<span className="fn-shelf-count">{sh.songs.length}</span></h3>
+          <div className="fn-shelf-ctl">
+            <button type="button" className="fn-seeall" data-shelf={sh.id} onClick={() => onAll(sh.id)} aria-label={"See all " + sh.title + " songs"}>See all</button>
+            <span className="fn-arrows" hidden={!edge.l && !edge.r}>
+              <button type="button" className="fn-arrow" onClick={() => go(-1)} disabled={!edge.l} aria-label={"Scroll " + sh.title + " back"}><Icon n="chevL" size={18} /></button>
+              <button type="button" className="fn-arrow" onClick={() => go(1)} disabled={!edge.r} aria-label={"Scroll " + sh.title + " forward"}><Icon n="chevR" size={18} /></button>
+            </span>
+          </div>
+        </div>
+        <ul className={"fn-rail" + (edge.l ? " fade-l" : "") + (edge.r ? " fade-r" : "")} ref={rail}>
+          {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+          {more ? (
+            <li className="fn-song fn-song-more">
+              <button type="button" className="fn-morecard" onClick={() => onAll(sh.id)}>
+                <span className="fn-more-n">+{sh.songs.length - RAIL_MAX}</span>
+                <span>more in {sh.title}</span>
+                <span className="fn-more-go">See all <Icon n="chevR" size={16} /></span>
+              </button>
+            </li>
+          ) : null}
+        </ul>
+      </section>
+    );
+  }
+
+  function LibraryBody({ shelves, page, shown, searching, query, favs, openSong, toggleFav, setView, clearSearch }) {
+    const [sort, setSort] = React.useState("level");
+    const root = React.useRef(null), back = React.useRef(null), saved = React.useRef(0), from = React.useRef(null);
+    const favSet = React.useMemo(() => { const o = {}; favs.forEach((k) => { o[k] = true; }); return o; }, [favs]);
+    const list = React.useMemo(() => sortSongs(shown, sort), [shown, sort]);
+    const scroller = () => root.current && root.current.closest(".fn-lib-scroll");
+    const openAll = (id) => { const sc = scroller(); saved.current = sc ? sc.scrollTop : 0; from.current = id; setView(id); };
+    const pid = page ? page.id : null;
+    React.useEffect(() => {   // a new page starts at the top on its back button; coming back restores the row's place
+      const sc = scroller();
+      if (pid) { if (sc) sc.scrollTop = 0; if (back.current) back.current.focus({ preventScroll: true }); }
+      else if (from.current) {
+        if (sc) sc.scrollTop = saved.current;
+        const b = root.current && root.current.querySelector('[data-shelf="' + from.current + '"]');
+        if (b) b.focus({ preventScroll: true });
+        from.current = null;
+      }
+    }, [pid]);
+
+    let body;
+    if (!page && !searching) {
+      body = shelves.map((sh) => <Shelf key={sh.id} sh={sh} favSet={favSet} openSong={openSong} toggleFav={toggleFav} onAll={openAll} />);
+    } else {
+      body = (
+        <section className="fn-page" aria-labelledby="fn-page-title">
+          <div className="fn-page-head">
+            {page ? <button type="button" className="fn-pageback" ref={back} onClick={() => setView(null)} aria-label="Back to all songs"><Icon n="chevL" size={20} /></button> : null}
+            <h3 id="fn-page-title">{page ? page.title : "Results"}<span className="fn-shelf-count">{list.length}</span></h3>
+            <label className="fn-sort"><span>Sort</span>
+              <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                {SORTS.map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
+              </select>
+            </label>
+          </div>
+          {list.length ? (
+            <ul className="fn-songs">
+              {list.map((s) => <SongCard key={s.key} s={s} fav={favSet[s.key]} openSong={openSong} toggleFav={toggleFav} />)}
+            </ul>
+          ) : (
+            <div className="fn-empty" role="status">
+              <span className="fn-empty-icon" aria-hidden="true"><Icon n="search" size={26} /></span>
+              <strong>{query.trim() ? "No songs match “" + query.trim() + "”" : "No songs at that level"}</strong>
+              <p>Try another word or a different level. Can't find the song you want? Ask your teacher to add it.</p>
+              {searching ? <button type="button" className="fn-cta" onClick={clearSearch}>Clear search</button> : null}
+            </div>
+          )}
+        </section>
+      );
+    }
+    return <div className="fn-libbody" ref={root}>{body}</div>;
+  }
+
   /* ------------------------------------------------------------ app shell: song library + player */
   const Logo = ({ size = 34 }) => (
     <svg className="fn-logo" width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
@@ -2083,6 +2369,8 @@
     const [stage, setStageState] = React.useState(() => (readSettings().stage === "light" ? "light" : "dark"));
     const [immersive, setImmersive] = React.useState(false);
     const [, bump] = React.useState(0);
+    const [view, setView] = React.useState(null);   // a shelf's "See all" page: its id, or null for the shelves
+    const [favs, setFavs] = React.useState(() => readKeys("fallingNotes.favs"));
     const fileRef = React.useRef(null), appRef = React.useRef(null);
     const songs = React.useMemo(songList, []);
     const canFs = React.useMemo(FS_OK, []);
@@ -2165,7 +2453,7 @@
     }
 
     function openSong(s) {
-      if (s.key !== "custom" && window.Students) window.Students.writeNS("fallingNotes.last", s.key);
+      if (s.key !== "custom" && window.Students) { window.Students.writeNS("fallingNotes.last", s.key); pushRecent(s.key); }
       setMeta(s);
     }
     function openFile(file) {
@@ -2189,12 +2477,20 @@
       else { const r = new FileReader(); r.onload = () => done(r.result); r.onerror = () => setMsg("Sorry, I could not read that file."); r.readAsArrayBuffer(file); }
     }
 
-    const LEVELS = ["Easy", "Medium", "Hard"];
-    const count = (l) => songs.filter((s) => s.level === l).length;
+    const recentSig = readKeys("fallingNotes.recent").join("|");
+    const shelves = React.useMemo(() => buildShelves(songs, favs, readKeys("fallingNotes.recent")), [songs, favs, recentSig]);
+    const page = view ? shelves.find((x) => x.id === view) || null : null;      // the open "See all" page
+    const pool = page ? page.songs : songs;
+    const count = (l) => pool.filter((s) => s.level === l).length;
     const q = query.trim().toLowerCase();
-    const shown = songs
-      .filter((s) => (filter === "All" || s.level === filter) && (!q || (s.name + " " + byline(s)).toLowerCase().indexOf(q) >= 0))
-      .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
+    const searching = !!q || filter !== "All";
+    const shown = pool
+      .filter((s) => (filter === "All" || s.level === filter) && (!q || (s.name + " " + byline(s)).toLowerCase().indexOf(q) >= 0));
+    const toggleFav = (key) => {
+      const cur = readKeys("fallingNotes.favs"), next = cur.indexOf(key) >= 0 ? cur.filter((k) => k !== key) : [key].concat(cur);
+      writeKeys("fallingNotes.favs", next); setFavs(next);
+    };
+    const clearSearch = () => { setQuery(""); setFilter("All"); };
     const starTotal = songs.reduce((t, s) => t + bestStars(s.key), 0);
     const lastKey = window.Students ? window.Students.readNS("fallingNotes.last", null) : null;
     const last = lastKey ? songs.find((s) => s.key === lastKey) : null;
@@ -2235,10 +2531,10 @@
                   <button type="button" className="fn-cta" onClick={applyUpdate}>Update now</button>
                 </div>
               ) : null}
-              <section className="fn-hero">
+              {page ? null : <section className="fn-hero">
                 <div className="fn-hero-text">
                   <h2>What will you play today?</h2>
-                  <p>Pick a song and play along on a real piano while the mic listens, or tap the keys on the screen. You can hear any song first.</p>
+                  <p>Play along on a real piano while the mic listens, or tap the keys on screen. You can hear any song first.</p>
                 </div>
                 {last ? (
                   <button type="button" className="fn-resume" onClick={() => openSong(last)}>
@@ -2247,7 +2543,7 @@
                     <span className="fn-resume-go" aria-hidden="true"><Icon n="play" size={18} /></span>
                   </button>
                 ) : null}
-              </section>
+              </section>}
 
               <div className="fn-listbar">
                 <label className="fn-search">
@@ -2258,7 +2554,7 @@
                 <div className="fn-filters" role="group" aria-label="Filter songs by level">
                   {["All"].concat(LEVELS).map((l) => (
                     <button key={l} type="button" aria-pressed={filter === l} onClick={() => setFilter(l)}>
-                      {l} <span>{l === "All" ? songs.length : count(l)}</span>
+                      {l} <span>{l === "All" ? pool.length : count(l)}</span>
                     </button>
                   ))}
                 </div>
@@ -2272,35 +2568,8 @@
               </div>
               {msg ? <p className="fn-error" role="alert">{msg}</p> : null}
 
-              {shown.length ? (
-                <ul className="fn-songs">
-                  {shown.map((s) => {
-                    const stars = bestStars(s.key), t = thumbPaths(s);
-                    return (
-                      <li key={s.key}>
-                        <button type="button" className="fn-card" onClick={() => openSong(s)}>
-                          <span className="fn-card-art">
-                            <Thumb meta={s} />
-                            <span className="fn-card-play" aria-hidden="true"><Icon n="play" size={20} /></span>
-                            <span className="fn-card-time">{fmtTime(t.secs)}</span>
-                          </span>
-                          <span className="fn-card-body">
-                            <span className="fn-card-name">{s.name}</span>
-                            <span className="fn-card-by">{byline(s)}</span>
-                            <span className="fn-card-meta">
-                              <span className={"fn-level " + s.level.toLowerCase()}>{s.level}</span>
-                              <span className="fn-sig">{t.sig}</span>
-                              {stars > 0 ? <Stars n={stars} /> : <span className="fn-new">New</span>}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="fn-empty">No songs match. Try a different word or level.</p>
-              )}
+              <LibraryBody shelves={shelves} page={page} shown={shown} searching={searching} query={query} favs={favs}
+                openSong={openSong} toggleFav={toggleFav} setView={setView} clearSearch={clearSearch} />
             </div>
           </div>
         )}
