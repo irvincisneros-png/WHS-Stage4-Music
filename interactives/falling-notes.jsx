@@ -1934,6 +1934,10 @@
               <button type="button" className="fn-play" onClick={togglePlay} aria-label={snap.playing ? "Pause" : "Play"} title={(snap.playing ? "Pause" : "Play") + " (space bar)"}>
                 <Icon n={snap.playing ? "pause" : "play"} size={22} />
               </button>
+              <button type="button" className={"fn-tempo-btn fn-stave-btn fn-demo-btn" + (demo ? " on" : "")} onClick={() => setDemo(!demo)}
+                aria-pressed={demo} title={demo ? "Turn off: you play the notes" : "The app plays the whole song so you can hear it"}>
+                <Icon n="sound" size={18} /><span className="fn-stave-lbl">Play it for me</span>
+              </button>
               <button type="button" className="fn-icon-btn" onClick={restart} aria-label="Restart" title="Restart"><Icon n="restart" /></button>
               <TempoControl speed={speed} bpm={g.bpm} onChange={setSpeedClamped} />
               <button type="button" className={"fn-tempo-btn fn-stave-btn" + (stave ? " on" : "")} onClick={() => setStave(!stave)}
@@ -1947,7 +1951,6 @@
               <span className="fn-bar-chips">
                 {demo ? null : <Chip label="Wait for me" checked={wait} onChange={setWait} />}
                 <Chip label="Metronome" checked={metro} onChange={setMetro} />
-                <Chip label="Play it for me" checked={demo} onChange={setDemo} />
               </span>
             </div>
             <div className="fn-bar-end">
