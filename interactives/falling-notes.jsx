@@ -1327,6 +1327,7 @@
 
   /* ------------------------------------------------------------ small UI bits */
   const ICONS = {
+    stave: <g><path d="M3 6h18M3 10h18M3 14h18M3 18h18" strokeWidth="1.4" /><ellipse cx="14" cy="16" rx="2.6" ry="2" fill="currentColor" transform="rotate(-20 14 16)" /><path d="M16.4 15.4V5" /></g>,
     tempo: <g><path d="M9.2 3h5.6l4.2 18H5z" /><path d="M12 16l5.5-9.5" /><path d="M7.2 16h9.6" /></g>,
     play: <path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z" fill="currentColor" stroke="none" />,
     pause: <g fill="currentColor" stroke="none"><rect x="6" y="4.5" width="4.2" height="15" rx="1.4" /><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.4" /></g>,
@@ -1569,7 +1570,7 @@
     const [speed, setSpeed] = React.useState(1);
     const [metro, setMetro] = React.useState(!!saved.metro);
     const [labels, setLabels] = React.useState(saved.labels !== false);
-    const [stave, setStave] = React.useState(!!saved.stave);
+    const [stave, setStave] = React.useState(saved.staveOn !== false);   // on unless the player turned it off (new key: old saves had it off by default)
     const [staveNames, setStaveNames] = React.useState(saved.staveNames !== false);
     const [otherHand, setOtherHand] = React.useState(false);
     const [demo, setDemo] = React.useState(false);
@@ -1604,7 +1605,7 @@
     }, [hands, wait, speed, metro, labels, staveNames, otherHand, demo, loop, loopStart, loopEnd]);
     React.useEffect(() => {
       detRef.current.setSens(SENS_KEYS[sens]);
-      saveSettings({ sens, wait, metro, labels, stave, staveNames });
+      saveSettings({ sens, wait, metro, labels, staveOn: stave, staveNames });
     }, [sens, wait, metro, labels, stave, staveNames]);
 
     const hooks = React.useMemo(() => ({
@@ -1935,6 +1936,10 @@
               </button>
               <button type="button" className="fn-icon-btn" onClick={restart} aria-label="Restart" title="Restart"><Icon n="restart" /></button>
               <TempoControl speed={speed} bpm={g.bpm} onChange={setSpeedClamped} />
+              <button type="button" className={"fn-tempo-btn fn-stave-btn" + (stave ? " on" : "")} onClick={() => setStave(!stave)}
+                aria-pressed={stave} title={stave ? "Hide the written music" : "Show the notes as written music"}>
+                <Icon n="stave" size={18} /><span className="fn-stave-lbl">Stave</span>
+              </button>
               <Seg label="Hands" value={hands} onChange={setHands} options={[
                 ["L", <React.Fragment><i className="fn-dot l" aria-hidden="true" />Left</React.Fragment>],
                 ["R", <React.Fragment><i className="fn-dot r" aria-hidden="true" />Right</React.Fragment>],
