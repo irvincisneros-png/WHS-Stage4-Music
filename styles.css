@@ -2756,6 +2756,9 @@ html.fn-app-open, html.fn-app-open body { overflow: hidden; overscroll-behavior:
 .fn-tempo-unit { font: 600 .72rem var(--font-display); color: var(--ink-soft); }
 .fn-tempo-pct { margin-left: 3px; padding: 2px 7px; border-radius: 99px; background: var(--terracotta); color: #fff; font: 700 .7rem var(--font-mono); }
 .fn-tempo-btn.changed svg { color: var(--terracotta); }
+.fn-stave-btn .fn-stave-lbl { font: 700 .88rem var(--font-display); }
+.fn-stave-btn.on { background: linear-gradient(180deg, #7aa2ff, #2c5fe6); border-color: transparent; color: #fff; }
+.fn-stave-btn.on svg { color: #fff; }
 .fn-tempo-pop {
   position: absolute; top: calc(100% + 8px); z-index: 30; width: 300px; box-sizing: border-box; padding: 14px 14px 12px;
   border: 1px solid var(--border); border-radius: 18px; background: var(--fn-pop); color: var(--ink);
@@ -3123,6 +3126,7 @@ button.fn-mic:hover { color: var(--ink); border-color: var(--teal); }
   .fn-stepper output { min-width: 2.7em; font-size: .8rem; }
   .fn-tempo-btn { height: 38px; padding: 0 10px 0 8px; }
   .fn-tempo-unit { display: none; }
+  .fn-stave-lbl { display: none; }
   .fn-seg { height: 38px; }
   .fn-seg button { padding: 0 8px; font-size: .82rem; gap: 5px; min-height: 30px; }
   .fn-seg .fn-dot { display: none; }
